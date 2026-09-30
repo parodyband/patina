@@ -101,18 +101,24 @@ static const char* kBuiltinLibrary = R"JSON(
     ]
   },
   "wood": {
-    "description": "Procedural wood grain (grain follows `stretch`), color varies per UV island like separate boards.",
-    "params": {"dark": {"default": "#5a3a1f"}, "mid": {"default": "#8a5a2c"}, "light": {"default": "#b07d45"},
-               "stretch": {"default": [1, 14, 1], "doc": "grain direction, e.g. [1,14,1] = along Y (up), [14,1,1] = along X"},
-               "roughness": {"default": 0.6}, "seed": {"default": 0}},
+    "description": "Procedural wood: growth rings around the grain axis, fibers along it, per-UV-island tone variation (boards).",
+    "params": {"light": {"default": "#c0925a", "doc": "early wood"}, "dark": {"default": "#6e4323", "doc": "late wood"},
+               "axis": {"default": "up", "doc": "grain direction: up | right | front"},
+               "rings": {"default": 14, "doc": "growth rings per object size"}, "roughness": {"default": 0.55}, "seed": {"default": 0}},
     "layers": [
-      {"id": "grain", "channels": {
-          "basecolor": {"type": "noise", "noise": "fbm", "scale": 14, "stretch": "${stretch}", "warp": 0.35, "seed": "${seed}", "gradient": ["${dark}", "${mid}", "${light}"]},
+      {"id": "rings", "channels": {
+          "basecolor": {"type": "noise", "noise": "rings", "axis": "${axis}", "scale": "${rings}", "warp": 0.35, "offset": [0.31, 0.0, 0.17], "seed": "${seed}",
+                        "gradient": [[0, "${light}"], [0.6, "${light}"], [1, "${dark}"]]},
           "metallic": 0,
-          "roughness": {"type": "noise", "noise": "fbm", "scale": 14, "stretch": "${stretch}", "seed": "${seed}", "range": ["${roughness+0.1}", "${roughness-0.1}"]},
-          "height": {"type": "noise", "noise": "ridged", "scale": 30, "stretch": "${stretch}", "seed": "${seed+1}", "range": [-0.05, 0.05]}}},
-      {"id": "fibers", "opacity": 0.35, "blend": "multiply", "channels": {"basecolor": {"type": "noise", "noise": "ridged", "scale": 60, "stretch": "${stretch}", "seed": "${seed+2}", "gradient": ["#ffffff", "#8a7a6a"]}}},
-      {"id": "boards", "opacity": 0.4, "blend": "multiply", "channels": {"basecolor": {"type": "island_random", "seed": "${seed+3}", "gradient": ["#c9b8a6", "#ffffff"]}}}
+          "roughness": {"type": "noise", "noise": "rings", "axis": "${axis}", "scale": "${rings}", "warp": 0.35, "offset": [0.31, 0.0, 0.17], "seed": "${seed}",
+                        "range": ["${roughness-0.06}", "${roughness+0.08}"]},
+          "height": {"type": "noise", "noise": "rings", "axis": "${axis}", "scale": "${rings}", "warp": 0.35, "offset": [0.31, 0.0, 0.17], "seed": "${seed}",
+                     "range": [0.0, -0.04]}}},
+      {"id": "fibers", "opacity": 0.45, "blend": "multiply", "channels": {
+          "basecolor": {"type": "noise", "noise": "fbm", "scale": 90, "stretch": "${axis}", "octaves": 3, "seed": "${seed+2}", "gradient": ["#9c8c7a", "#ffffff"]},
+          "height": {"type": "noise", "noise": "ridged", "scale": 120, "stretch": "${axis}", "octaves": 2, "seed": "${seed+4}", "range": [-0.02, 0.0]}},
+        "blend_modes": {"height": "add"}},
+      {"id": "boards", "opacity": 0.35, "blend": "multiply", "channels": {"basecolor": {"type": "island_random", "seed": "${seed+3}", "gradient": ["#c9b8a6", "#ffffff"]}}}
     ]
   },
   "leather": {

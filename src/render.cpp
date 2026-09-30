@@ -138,16 +138,26 @@ struct Lighting {
   vec3 key_col{2.9f, 2.8f, 2.65f}, rim_col{1.3f, 1.4f, 1.6f}, fill_col{0.45f, 0.47f, 0.5f};
 };
 
-// Studio environment in camera space: gradient sky + soft boxes aligned with the lights.
+// Studio environment in camera space: dark floor, sharp horizon, gradient sky and several soft boxes
+// (key, rim, overhead, vertical strip) so glossy metals have structure to reflect. Rougher surfaces see
+// wider, dimmer lobes and a softer horizon.
 static inline vec3 env(const Lighting& L, vec3 d, float rough) {
   float y = dot(d, L.U);
-  vec3 ground{0.10f, 0.095f, 0.09f}, sky{0.42f, 0.44f, 0.47f};
-  vec3 c = lerp(ground, sky, smoothstep(-0.5f, 0.7f, y));
-  float spread = 0.12f + rough * rough * 1.1f;
+  float r2 = rough * rough;
+  float hw = 0.03f + r2 * 0.9f;
+  vec3 ground{0.055f, 0.052f, 0.05f}, horizon{0.34f, 0.35f, 0.37f}, zenith{0.62f, 0.65f, 0.7f};
+  vec3 sky = lerp(horizon, zenith, saturate(y));
+  vec3 c = lerp(ground, sky, smoothstep(-hw, hw, y));
+  float spread = 0.1f + r2 * 1.1f;
   float s2 = spread * spread;
-  float norm = 0.12f * 0.12f / s2;
-  c += vec3(3.2f, 3.1f, 2.9f) * (std::exp((dot(d, L.key) - 1.f) / s2) * norm);
-  c += vec3(1.4f, 1.5f, 1.7f) * (std::exp((dot(d, L.rim) - 1.f) / s2) * norm);
+  float norm = 0.1f * 0.1f / s2;
+  c += vec3(3.4f, 3.3f, 3.1f) * (std::exp((dot(d, L.key) - 1.f) / s2) * norm);
+  c += vec3(1.6f, 1.7f, 1.9f) * (std::exp((dot(d, L.rim) - 1.f) / s2) * norm);
+  c += vec3(1.6f, 1.6f, 1.6f) * (std::exp((dot(d, L.U) - 1.f) / (s2 * 1.6f)) * norm);
+  // vertical strip light on the left: ignore most of the vertical component
+  vec3 dh = normalize(d - L.U * (dot(d, L.U) * 0.8f));
+  vec3 strip = normalize(L.R * -0.85f - L.F * 0.5f);
+  c += vec3(2.2f, 2.2f, 2.3f) * (std::exp((dot(dh, strip) - 1.f) / (s2 * 0.35f)) * norm * 0.6f);
   return c;
 }
 

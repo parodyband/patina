@@ -143,7 +143,7 @@ A mask is a stack of effects evaluated **bottom to top**, starting from black:
 | `ao`, `cavity`, `thickness` | baked maps |
 | `gradient` | along an axis, `from`..`to` in bbox units (`"axis":"up"`) |
 | `direction` | faces pointing a direction (dust/snow/moss on top) |
-| `noise` | `fbm`, `perlin`, `value`, `ridged`, `turbulence`, `cells`, `voronoi`, `cracks`, `dots`, `white` (3D, seamless) |
+| `noise` | `fbm`, `perlin`, `value`, `ridged`, `turbulence`, `cells`, `voronoi`, `cracks`, `dots`, `white`, `rings` (wood rings around `axis`); 3D and seamless. `stretch` accepts `[x,y,z]` or a direction name such as `"up"` |
 | `grunge` | `smudge`, `spots`, `patches`, `cracks`, `speckle`, `rust` |
 | `scratches` | straight scratches: `density`, `length`, `width`, optional `direction` |
 | `streaks` | vertical runs on walls (rust/water) |

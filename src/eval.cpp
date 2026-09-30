@@ -338,6 +338,7 @@ struct NoiseP {
   float warp = 0;
   vec3 offset{0, 0, 0};
   float jitter = 1, width = 0.08f, size = 0.35f;
+  vec3 axis{0, 1, 0};  // rings
   bool world = false;
 };
 
@@ -349,7 +350,21 @@ static NoiseP parse_noise(const Json& s, const char* def_kind, float def_scale, 
   P.lac = s.numf("lacunarity", 2.f);
   P.gain = s.numf("gain", 0.5f);
   P.seed = (uint32_t)s.integer("seed", 0) * 0x9E3779B1u + 0x51ED27u;
-  if (const Json* st = s.find("stretch")) { if (!parse_vec3(*st, P.stretch)) c.error("stretch must be [x,y,z]"); }
+  if (const Json* st = s.find("stretch")) {
+    vec3 d;
+    if (st->is_string() && named_dir(st->as_str(), d)) {
+      // a direction name stretches features 12x along that axis (grain, brushing, drips)
+      P.stretch = vec3(1.f);
+      P.stretch[std::fabs(d.x) > 0.5f ? 0 : (std::fabs(d.y) > 0.5f ? 1 : 2)] = 12.f;
+    } else if (st->is_object()) {
+      vec3 ad = parse_dir((*st)["axis"], vec3(0, 1, 0), c, "stretch.axis");
+      P.stretch = vec3(1.f);
+      P.stretch[std::fabs(ad.x) > 0.5f ? 0 : (std::fabs(ad.y) > 0.5f ? 1 : 2)] = st->numf("factor", 12.f);
+    } else if (!parse_vec3(*st, P.stretch)) {
+      c.error("stretch must be [x,y,z], a direction name like \"up\", or {\"axis\":\"up\",\"factor\":12}");
+    }
+  }
+  if (s.has("axis")) P.axis = parse_dir(s["axis"], vec3(0, 1, 0), c, "axis");
   if (const Json* of = s.find("offset")) { if (!parse_vec3(*of, P.offset)) c.error("offset must be [x,y,z]"); }
   P.warp = s.numf("warp", 0.f);
   P.jitter = s.numf("jitter", 1.f);
@@ -357,13 +372,13 @@ static NoiseP parse_noise(const Json& s, const char* def_kind, float def_scale, 
   P.size = s.numf("size", 0.35f);
   P.world = s.str("space", "object") == "world";
   P.stretch = vmax(P.stretch, vec3(1e-3f));
-  static const char* kinds[] = {"fbm", "perlin", "value", "ridged", "turbulence", "cells", "voronoi", "cracks", "dots", "white"};
+  static const char* kinds[] = {"fbm", "perlin", "value", "ridged", "turbulence", "cells", "voronoi", "cracks", "dots", "white", "rings"};
   bool ok = false;
   for (auto* k : kinds) if (P.kind == k) ok = true;
   if (!ok) {
     std::vector<std::string> v(std::begin(kinds), std::end(kinds));
     std::string dym = did_you_mean(P.kind, v);
-    c.error("unknown noise '%s'%s; kinds: fbm perlin value ridged turbulence cells voronoi cracks dots white", P.kind.c_str(),
+    c.error("unknown noise '%s'%s; kinds: fbm perlin value ridged turbulence cells voronoi cracks dots white rings", P.kind.c_str(),
             dym.empty() ? "" : (" (did you mean '" + dym + "'?)").c_str());
   }
   return P;
@@ -392,7 +407,14 @@ static inline float noise_at(const NoiseP& P, vec3 p) {
         Worley w = worley3(p, P.jitter, P.seed);
         return hash_float(w.id);
       }
-    case 'r': return ridged3(p, P.octaves, P.lac, P.gain, P.seed);
+    case 'r':
+      if (k == "rings") {
+        // growth rings around `axis` (sawtooth: 0 = early wood, ->1 = late wood, sharp boundary)
+        vec3 radial = p - P.axis * dot(p, P.axis);
+        float r = length(radial);
+        return r - std::floor(r);
+      }
+      return ridged3(p, P.octaves, P.lac, P.gain, P.seed);
     case 't': return turbulence3(p, P.octaves, P.lac, P.gain, P.seed);
     case 'c':
       if (k == "cells") { Worley w = worley3(p, P.jitter, P.seed); return saturate(w.f1 / 0.95f); }
@@ -976,11 +998,12 @@ static const std::vector<FieldDef>& field_defs() {
   static const std::vector<FieldDef> defs = {
       {"constant", "basic", "A constant value.", {{"value", "1", "value"}}, f_constant},
       {"noise", "procedural", "3D procedural noise sampled at the surface position (seamless across UV seams).",
-       {{"noise", "\"fbm\"", "fbm | perlin | value | ridged | turbulence | cells | voronoi | cracks | dots | white"},
+       {{"noise", "\"fbm\"", "fbm | perlin | value | ridged | turbulence | cells | voronoi | cracks | dots | white | rings (wood growth rings around `axis`)"},
         {"scale", "4", "features per object size (object space) or per unit (world space)"},
         {"octaves", "5", "fbm/ridged/turbulence/value detail levels"}, {"lacunarity", "2", "frequency multiplier per octave"},
         {"gain", "0.5", "amplitude multiplier per octave"}, {"seed", "0", "integer seed"},
-        {"stretch", "[1,1,1]", "feature size multiplier per axis, e.g. [1,6,1] = streaks along Y"},
+        {"stretch", "[1,1,1]", "feature size multiplier per axis, e.g. [1,6,1] = streaks along Y; or \"up\" (12x along an axis)"},
+        {"axis", "\"up\"", "rings: the grain axis"},
         {"warp", "0", "domain warp strength (0..2)"}, {"offset", "[0,0,0]", "domain offset"},
         {"jitter", "1", "cells/voronoi/cracks/dots randomness"}, {"width", "0.08", "cracks line width"},
         {"size", "0.35", "dots radius (in cells)"}, {"space", "\"object\"", "object (normalized size) | world (mesh units)"}},

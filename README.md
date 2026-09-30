@@ -36,6 +36,10 @@ Substance Painter is built for people with a mouse. Agents need:
 *Left: two texture sets on one mesh (painted metal with rust, rusted rings, label band). Middle: Patina's
 export rendered in Blender Cycles through the bridge. Right: `mode=mask:<layer>` shows exactly where a layer applies.*
 
+![16 smart materials rendered by one variants call](docs/images/gallery.png)
+
+*One `variants` call renders 16 smart materials side by side, evaluated in parallel in 0.7 s.*
+
 ## Performance
 
 Measured on an M5 Pro (6P + 12E cores) at 2048² per texture set:
