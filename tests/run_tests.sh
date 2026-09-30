@@ -6,6 +6,7 @@ BIN=${1:-build/patina}
 # Windows often has only `python` (and a Store stub named python3 that fails).
 if [ -z "${PY:-}" ]; then python3 -c "" 2>/dev/null && PY=python3 || PY=python; fi
 W=ci_work
+export PATINA_NO_UPDATE_CHECK=1  # no network calls from the MCP server during tests
 rm -rf "$W" && mkdir -p "$W"
 pass=0
 ok() { pass=$((pass + 1)); echo "  ok  $1"; }
@@ -80,5 +81,44 @@ ok "batch render x3"
 # MCP
 "$PY" tests/mcp_smoke.py "$BIN" "$W/mcp" >/dev/null || fail "mcp smoke"
 ok "mcp smoke (concurrent calls)"
+
+# install + update into a sandbox home (no PATH or MCP registration); the "release" is served over file:// URLs
+EXE="$BIN"; [ -f "$EXE.exe" ] && EXE="$EXE.exe"
+export PATINA_HOME="$W/home/.patina" CLAUDE_CONFIG_DIR="$W/home/.claude"
+"$BIN" install --no-path --no-mcp --compact >/dev/null || fail "install"
+for f in "$CLAUDE_CONFIG_DIR/skills/patina/SKILL.md" "$CLAUDE_CONFIG_DIR/skills/patina/AGENT_GUIDE.md" \
+         "$PATINA_HOME/tools/blender/patina_blender.py"; do
+  [ -f "$f" ] || fail "install did not write $f"
+done
+grep -q '^name: patina$' "$CLAUDE_CONFIG_DIR/skills/patina/SKILL.md" || fail "skill frontmatter"
+ok "install (binary, skill, blender bridge)"
+case "$(uname -s)" in
+  MINGW*|MSYS*|CYGWIN*) ASSET=patina-windows-x64.exe ;;
+  Darwin) [ "$(uname -m)" = arm64 ] && ASSET=patina-macos-arm64 || ASSET= ;;
+  *) ASSET= ;;
+esac
+if [ -n "$ASSET" ]; then
+  rel="$W/release"; mkdir -p "$rel"; cp "$EXE" "$rel/$ASSET"
+  release_json() {  # $1 = checksum to publish (defaults to the real one)
+    "$PY" - "$rel" "$ASSET" "${1:-}" <<'EOF'
+import hashlib, json, pathlib, sys
+rel, asset, digest = pathlib.Path(sys.argv[1]).resolve(), sys.argv[2], sys.argv[3]
+digest = digest or hashlib.sha256((rel / asset).read_bytes()).hexdigest()
+(rel / "SHA256SUMS.txt").write_text(f"{digest}  {asset}\n")
+assets = [{"name": n, "browser_download_url": (rel / n).as_uri()} for n in (asset, "SHA256SUMS.txt")]
+(rel / "latest.json").write_text(json.dumps({"tag_name": "v99.0.0", "html_url": "", "assets": assets}))
+print((rel / "latest.json").as_uri())
+EOF
+  }
+  export PATINA_RELEASES_API=$(release_json)
+  [ "$("$BIN" update --check --compact | json "d['update_available']")" = "True" ] || fail "update --check"
+  [ "$("$BIN" update --no-path --no-mcp --compact | json "d['updated_to']")" = "99.0.0" ] || fail "update"
+  export PATINA_RELEASES_API=$(release_json 0000000000000000000000000000000000000000000000000000000000000000)
+  set +e; out=$("$BIN" update --no-path --no-mcp --compact); code=$?; set -e
+  [ $code -ne 0 ] && echo "$out" | grep -q "checksum mismatch" || fail "bad checksum must be rejected"
+  unset PATINA_RELEASES_API
+  ok "update: check, verified install, checksum mismatch rejected"
+fi
+unset PATINA_HOME CLAUDE_CONFIG_DIR
 
 echo "== $pass passed"

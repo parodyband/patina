@@ -36,6 +36,8 @@ Lengths (radius/size) are fractions of the object's largest dimension. Noise "sc
 Everything is deterministic (seeded) and cached; renders take ~100-500 ms, so iterate freely. Run independent assets in parallel (batch).
 Read library(topic="guide") once for the full guide with recipes.)~";
 
+const char* mcp_instructions() { return kInstructions; }
+
 struct ToolDef { const char* name; const char* command; const char* description; const char* schema; };
 
 static const ToolDef kTools[] = {
@@ -180,6 +182,7 @@ int run_mcp_server() {
   _setmode(_fileno(stdout), _O_BINARY);
   _setmode(_fileno(stdin), _O_BINARY);
 #endif
+  start_update_check();
   std::atomic<int> inflight{0};
   std::mutex cv_m;
   std::condition_variable cv;
@@ -210,9 +213,11 @@ int run_mcp_server() {
       r.set("capabilities", caps);
       Json info = Json::object();
       info.set("name", "patina");
-      info.set("version", "0.1.0");
+      info.set("version", patina_version());
       r.set("serverInfo", info);
-      r.set("instructions", kInstructions);
+      std::string notice = update_notice();
+      r.set("instructions", notice.empty() ? std::string(kInstructions)
+                                           : std::string(kInstructions) + "\n\n" + notice + " Mention this to the user.");
       send_result(id, r);
     } else if (method == "ping") {
       if (is_request) send_result(id, Json::object());

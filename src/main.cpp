@@ -39,8 +39,12 @@ usage: patina <command> [args] [--flags]      (all commands print JSON)
   mcp                                          run the MCP server on stdio
   view     <project>                           native viewer window (live reload)
   bench    <mesh> [--resolution 2048]          performance benchmark
+  install  [--no-skill] [--no-mcp] [--no-path] install to ~/.patina/bin + Claude Code skill + MCP server
+  update   [--check] [--force]                 install the latest release (verified) and refresh the skill
+  version                                      print the version and whether an update is available
 
-environment: PATINA_THREADS, PATINA_LIBRARY (extra smart material dirs), PATINA_BLENDER
+environment: PATINA_THREADS, PATINA_LIBRARY (extra smart material dirs), PATINA_BLENDER,
+             PATINA_HOME (install dir, default ~/.patina), PATINA_NO_UPDATE_CHECK
 )";
 
 static Json parse_value(const std::string& s) {
@@ -68,7 +72,12 @@ int main(int argc, char** argv) {
     return argc < 2 ? 1 : 0;
   }
   std::string cmd = argv[1];
-  if (cmd == "version" || cmd == "--version") { printf("patina 0.1.0 (%d threads)\n", thread_count()); return 0; }
+  if (cmd == "version" || cmd == "--version") {
+    printf("patina %s (%d threads)\n", patina_version(), thread_count());
+    std::string notice = update_notice();
+    if (!notice.empty()) printf("%s\n", notice.c_str());
+    return 0;
+  }
   if (cmd == "mcp") return run_mcp_server();
   if (cmd == "guide") { fputs(agent_guide(), stdout); return 0; }
 
@@ -182,7 +191,8 @@ int main(int argc, char** argv) {
       if (!pos.empty() && !args.has("project")) args.set("project", pos[0]);
     }
     args.set("return_image", false);  // CLI writes images to disk
-    CommandOutput out = run_command(name, args);
+    // install/update are CLI-only: they are not MCP tools and not reachable through `call` or `batch`
+    CommandOutput out = cmd == "install" ? cmd_install(args) : cmd == "update" ? cmd_update(args) : run_command(name, args);
     printf("%s\n", compact ? out.result.dump().c_str() : out.result.dump(2).c_str());
     return 0;
   } catch (const std::exception& e) {

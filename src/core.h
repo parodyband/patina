@@ -126,6 +126,7 @@ int edit_distance(const std::string& a, const std::string& b);
 std::string did_you_mean(const std::string& word, const std::vector<std::string>& candidates);
 std::string sanitize_filename(const std::string& s);
 std::string base64_encode(const void* data, size_t n);
+std::string sha256_hex(const void* data, size_t n);  // lowercase hex digest
 
 // ---------------------------------------------------------------- time
 double now_seconds();

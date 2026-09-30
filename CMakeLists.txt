@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(patina C CXX)
+project(patina VERSION 0.2.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -41,30 +41,36 @@ add_library(patina_core STATIC
   src/project.cpp
   src/commands.cpp
   src/mcp.cpp
+  src/update.cpp
 )
 target_include_directories(patina_core PUBLIC src third_party)
 
-# Embed docs/AGENT_GUIDE.md so agents can read it through `library topic=guide` (MCP) / `patina guide`.
-# Split into chunks: MSVC limits the size of a single string literal.
-set(PATINA_GUIDE ${CMAKE_SOURCE_DIR}/docs/AGENT_GUIDE.md)
-set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${PATINA_GUIDE})
-file(READ ${PATINA_GUIDE} PATINA_GUIDE_TEXT)
-string(LENGTH "${PATINA_GUIDE_TEXT}" PATINA_GUIDE_LEN)
-set(PATINA_GUIDE_INC "")
-set(_pos 0)
-while(_pos LESS PATINA_GUIDE_LEN)
-  string(SUBSTRING "${PATINA_GUIDE_TEXT}" ${_pos} 6000 _chunk)
-  string(APPEND PATINA_GUIDE_INC "R\"PGUIDE(${_chunk})PGUIDE\"\n")
-  math(EXPR _pos "${_pos} + 6000")
-endwhile()
-file(WRITE ${CMAKE_BINARY_DIR}/generated/patina_guide.inc "${PATINA_GUIDE_INC}")
+# Embed text files as byte arrays (no string-literal size limits; bytes are kept exactly):
+# docs/AGENT_GUIDE.md for `library topic=guide` / `patina guide` and the installed skill, and the
+# Blender bridge so an installed binary can run `blender` without the repo.
+function(patina_embed file name)
+  file(READ ${file} hex HEX)
+  string(REGEX REPLACE "([0-9a-f][0-9a-f])" "0x\\1," hex "${hex}")
+  file(WRITE ${CMAKE_BINARY_DIR}/generated/${name}.inc.tmp "${hex}0x00\n")
+  configure_file(${CMAKE_BINARY_DIR}/generated/${name}.inc.tmp ${CMAKE_BINARY_DIR}/generated/${name}.inc COPYONLY)
+  set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${file})
+endfunction()
+patina_embed(${CMAKE_SOURCE_DIR}/docs/AGENT_GUIDE.md patina_guide)
+patina_embed(${CMAKE_SOURCE_DIR}/tools/blender/patina_blender.py patina_blender)
 target_include_directories(patina_core PRIVATE ${CMAKE_BINARY_DIR}/generated)
+target_compile_definitions(patina_core PUBLIC PATINA_VERSION="${PROJECT_VERSION}")
 target_link_libraries(patina_core PUBLIC patina_thirdparty)
 find_package(Threads REQUIRED)
 target_link_libraries(patina_core PUBLIC Threads::Threads)
+if(WIN32)
+  target_link_libraries(patina_core PUBLIC advapi32 user32)  # install: user PATH in the registry
+endif()
 
 add_executable(patina src/main.cpp)
 target_link_libraries(patina PRIVATE patina_core)
+if(WIN32)
+  add_custom_command(TARGET patina PRE_LINK COMMAND ${CMAKE_COMMAND} -DEXE=$<TARGET_FILE:patina> -P ${CMAKE_SOURCE_DIR}/cmake/move_aside.cmake)
+endif()
 
 if(PATINA_VIEWER)
   add_library(patina_imgui STATIC

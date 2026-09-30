@@ -20,6 +20,16 @@ namespace pt {
 
 const char* agent_guide();
 
+std::string shell_quote(const std::string& s) {
+#if defined(_WIN32)
+  return "\"" + s + "\"";
+#else
+  std::string r = "'";
+  for (char c : s) { if (c == '\'') r += "'\\''"; else r += c; }
+  return r + "'";
+#endif
+}
+
 // ---------------------------------------------------------------- session caches (shared by concurrent requests)
 namespace {
 struct MeshEntry { int64_t mtime; std::shared_ptr<const Mesh> mesh; };
@@ -530,17 +540,7 @@ std::string find_bridge_script() {
     std::string c = path_join(dir, rel);
     if (file_exists(c)) return path_abs(c);
   }
-  fail("cannot find tools/blender/patina_blender.py (set PATINA_BLENDER_SCRIPT)");
-}
-
-std::string shell_quote(const std::string& s) {
-#if defined(_WIN32)
-  return "\"" + s + "\"";
-#else
-  std::string r = "'";
-  for (char c : s) { if (c == '\'') r += "'\\''"; else r += c; }
-  return r + "'";
-#endif
+  return installed_bridge_script();  // written from the copy embedded in the binary
 }
 
 CommandOutput cmd_blender(const Json& a) {
@@ -684,10 +684,10 @@ EvaluatedProject evaluate_project_maps(const std::string& project, const Json* d
 }
 
 const char* agent_guide() {
-  static const char* text =
+  static const unsigned char text[] = {
 #include "patina_guide.inc"
-      ;
-  return text;
+  };
+  return (const char*)text;
 }
 
 std::vector<std::string> command_names() {
