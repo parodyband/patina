@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "patina": {
+      "command": "./build/patina",
+      "args": ["mcp"]
+    }
+  }
+}

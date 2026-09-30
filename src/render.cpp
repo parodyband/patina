@@ -368,12 +368,12 @@ RgbImage render_view(const Mesh& m, const BVH& bvh, const std::vector<SetMaps>& 
           c = shade_pbr(L, N, V, bc, metal, rough, ao, key_vis()) * o.exposure + vec3(em[0], em[1], em[2]);
           if (op < 1.f) c = lerp(lerp(vec3(0.205f), vec3(0.115f), fy), c, op);
         } else if (mode == "clay" || !mask_key.empty() || mode == "islands" || mode == "parts" || mode == "uv_checker") {
-          vec3 bc{0.45f, 0.45f, 0.45f};
+          vec3 bc{0.22f, 0.22f, 0.22f};
           if (!mask_key.empty() && sm) {
             auto it = sm->extra.find(mask_key);
             float mv = 0;
             if (it != sm->extra.end()) sample_map(it->second, 1, res, uv.x, uv.y, &mv);
-            bc = lerp(bc, vec3(0.85f, 0.05f, 0.03f), saturate(mv));
+            bc = lerp(bc, vec3(0.9f, 0.02f, 0.01f), std::sqrt(saturate(mv)));
           } else if (mode == "islands" || mode == "parts") {
             uint32_t h = mode == "islands" ? (uint32_t)m.tri_island[t] * 2654435761u + 7u : (uint32_t)m.tri_part[t] * 2246822519u + 3u;
             bc = {0.15f + 0.7f * hash_float(h), 0.15f + 0.7f * hash_float(h ^ 0x9e37u), 0.15f + 0.7f * hash_float(h ^ 0x85ebu)};
@@ -463,7 +463,7 @@ RgbImage compose_grid(const std::vector<RgbImage>& tiles, const std::vector<std:
       draw_text(out, cx + 6, cy + 6, labels[i], 235, 235, 235, sc);
     }
   }
-  if (!title.empty()) draw_text(out, 8, 6, title, 220, 220, 220, 2);
+  if (!title.empty()) draw_text(out, 8, out.w >= 700 ? 6 : 9, title, 220, 220, 220, out.w >= 700 ? 2 : 1);
   return out;
 }
 
