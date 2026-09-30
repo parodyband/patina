@@ -21,9 +21,11 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <memory>
 #include <unordered_map>
 
 #include "bake.h"
+#include "eval.h"
 
 namespace pt {
 
@@ -44,6 +46,16 @@ void NormalBakeSettings::from_json(const Json& j) {
   samples = std::clamp(j.integer("samples", samples), 1, 64);
   denoise = j.boolean("denoise", denoise);
   curvature = std::clamp(j.numf("curvature", curvature), 0.f, 10.f);
+  cage_mesh = j.str("cage_mesh", cage_mesh);
+  ao_from_high = j.boolean("ao_from_high", ao_from_high);
+  auto masked = [](const Json* m, const char* key, Json& mask, float& to, float lo, float hi) {
+    if (!m) return;
+    if (!m->is_object() || !m->has("mask")) fail("bake.normal.%s must be {\"to\": value, \"mask\": [effects...]}", key);
+    mask = (*m)["mask"];
+    to = std::clamp(m->numf("to", to), lo, hi);
+  };
+  masked(j.find("cage_mask"), "cage_mask", cage_mask, cage_to, 0.f, 1.f);
+  masked(j.find("skew_mask"), "skew_mask", skew_mask, skew_to, 0.f, 1.f);
   if (const Json* b = j.find("bevel")) {
     if (b->is_number()) bevel_radius = b->as_float();
     else if (b->is_object()) {
@@ -68,6 +80,10 @@ Json NormalBakeSettings::to_json() const {
   j.set("samples", samples);
   j.set("denoise", denoise);
   j.set("curvature", curvature);
+  j.set("cage_mesh", cage_mesh);
+  j.set("ao_from_high", ao_from_high);
+  if (!cage_mask.is_null()) { Json m = Json::object(); m.set("to", cage_to); m.set("mask", cage_mask); j.set("cage_mask", m); }
+  if (!skew_mask.is_null()) { Json m = Json::object(); m.set("to", skew_to); m.set("mask", skew_mask); j.set("skew_mask", m); }
   Json b = Json::object();
   b.set("radius", bevel_radius);
   b.set("samples", bevel_samples);
@@ -293,7 +309,9 @@ void denoise_vectors(const SampleSet& ss, std::vector<vec3>& v, const std::vecto
 
 }  // namespace
 
-void bake_normals(const Mesh& low, const Mesh* high, std::vector<SampleSet>& sets, const BakeSettings& bs, Json& stats) {
+void bake_normals(Baked& bk, const Mesh* high, const BakeSettings& bs, Json& stats) {
+  const Mesh& low = *bk.mesh;
+  std::vector<SampleSet>& sets = bk.sets;
   const NormalBakeSettings& s = bs.normal;
   Timer total;
   float ext = low.max_extent();
@@ -409,6 +427,23 @@ void bake_normals(const Mesh& low, const Mesh* high, std::vector<SampleSet>& set
     return bevel_normal(bev_mesh, b, p, tri_normal(bev_mesh, tri), shading, R, s.bevel_samples, seed);
   };
 
+  // explicit cage: same triangles as the low (e.g. a pushed copy exported from the DCC)
+  std::unique_ptr<Mesh> cage_m;
+  if (!s.cage_mesh.empty() && high) {
+    cage_m = std::make_unique<Mesh>(load_mesh(s.cage_mesh));
+    if (cage_m->tri_count() != low.tri_count())
+      fail("cage mesh '%s' has %zu triangles but the low poly has %zu: export the cage as a pushed copy of the low (same topology)",
+           s.cage_mesh.c_str(), cage_m->tri_count(), low.tri_count());
+  }
+  // AO from the high poly: the whole high mesh occludes (parts ground each other, like Toolbag's ignore groups)
+  SubBVH high_all;
+  bool ao_high = high && s.ao_from_high;
+  if (ao_high) {
+    std::vector<uint32_t> all;
+    for (uint32_t t = 0; t < high->tri_count(); t++) all.push_back(t);
+    high_all.build(*high, all);
+  }
+
   int grid = std::max(1, (int)std::lround(std::sqrt((float)s.samples)));
   int64_t misses_total = 0, samples_total = 0;
   Json sets_j = Json::object();
@@ -419,6 +454,12 @@ void bake_normals(const Mesh& low, const Mesh* high, std::vector<SampleSet>& set
     std::vector<uint8_t> denoise_mask(n, 0);
     std::vector<vec3> world(n);
     std::atomic<int64_t> misses{0};
+    std::vector<float> cage_k, skew_k;  // painted cage / skew (mask stacks evaluated on this set's samples)
+    if (high && !s.cage_mask.is_null()) cage_k = evaluate_mask(s.cage_mask, bk, ss.set, s.base_dir, &warnings);
+    if (high && !s.skew_mask.is_null()) skew_k = evaluate_mask(s.skew_mask, bk, ss.set, s.base_dir, &warnings);
+    std::vector<vec3> hit_p, hit_n;  // centre hit on the high poly (for AO)
+    std::vector<uint8_t> hit_ok;
+    if (ao_high) { hit_p.assign(n, vec3(0.f)); hit_n.assign(n, vec3(0.f)); hit_ok.assign(n, 0); }
     parallel_for((int64_t)n, 64, [&](int64_t b, int64_t e) {
       for (int64_t i = b; i < e; i++) {
         uint32_t t = ss.tri[i];
@@ -432,7 +473,15 @@ void bake_normals(const Mesh& low, const Mesh* high, std::vector<SampleSet>& set
         bool bevelled = false;
         if (high) {
           float w = s.skew >= 0 ? s.skew : smoothstep(0.f, s.skew_distance * ext, hard.distance(ss.pos[i]));
+          if (!skew_k.empty()) w = lerp(w, s.skew_to, skew_k[i]);
           vec3 dir = normalize(lerp(nc, ns, w));
+          float cg = cage_k.empty() ? cage : lerp(cage, s.cage_to * ext, cage_k[i]);
+          vec3 pc{0, 0, 0};  // explicit cage point for this sample
+          if (cage_m) {
+            pc = cage_m->pos[cage_m->idx[t * 3]] * bc.x + cage_m->pos[cage_m->idx[t * 3 + 1]] * bc.y + cage_m->pos[cage_m->idx[t * 3 + 2]] * bc.z;
+            vec3 d = ss.pos[i] - pc;
+            if (length2(d) > 1e-16f) dir = -normalize(d);
+          }
           const SubBVH& g = groups[low_group[low.tri_part[t]]];
           for (int sy = 0; sy < grid; sy++)
             for (int sx = 0; sx < grid; sx++) {
@@ -440,8 +489,12 @@ void bake_normals(const Mesh& low, const Mesh* high, std::vector<SampleSet>& set
               vec3 p = ss.pos[i] + tg * (ox * ss.len_u[i]) - bt * (oy * ss.len_v[i]);
               // auto: at hard edges dir == nc on both sides, so starting along dir is gap-free and never shifts
               // details sideways; a fixed skew starts on the continuous cage (Toolbag) so edges stay closed
-              vec3 o = s.skew < 0 ? p + dir * cage : p + nc * cage;
-              float tmax = s.skew < 0 ? cage + depth : (cage + depth) / std::fmax(dot(nc, dir), 0.25f);
+              vec3 o = s.skew < 0 && skew_k.empty() ? p + dir * cg : p + nc * cg;
+              float tmax = s.skew < 0 && skew_k.empty() ? cg + depth : (cg + depth) / std::fmax(dot(nc, dir), 0.25f);
+              if (cage_m) {  // rays go from the cage point through the low surface
+                o = pc + (p - ss.pos[i]);
+                tmax = length(ss.pos[i] - pc) + depth;
+              }
               float tmin = 0.f, th, u, v;
               uint32_t ht;
               vec3 nh;
@@ -450,6 +503,12 @@ void bake_normals(const Mesh& low, const Mesh* high, std::vector<SampleSet>& set
                 if (!g.hit(o, -dir, tmin, tmax, th, ht, u, v)) break;
                 if (s.ignore_backfaces && dot(tri_normal(*high, ht), dir) < 0.f) { tmin = th + eps; continue; }
                 nh = smooth_normal(*high, ht, u, v);
+                if (ao_high && sx == grid / 2 && sy == grid / 2) {
+                  vec3 hg = tri_normal(*high, ht);
+                  hit_p[i] = o - dir * th;
+                  hit_n[i] = dot(hg, nh) < 0 ? -hg : hg;
+                  hit_ok[i] = 1;
+                }
                 if (R > 0) {
                   vec3 nb = bevel_at(o - dir * th, ht, nh, seed + (uint32_t)(sy * grid + sx) * 7919u);
                   bevelled = bevelled || dot(nb, nh) < 0.99999f;
@@ -492,6 +551,27 @@ void bake_normals(const Mesh& low, const Mesh* high, std::vector<SampleSet>& set
         ss.nmap[i] = normalize(nt);
       }
     });
+    if (ao_high) {
+      float maxd = bs.ao_distance * ext, aeps = ext * 2e-5f;
+      int N = bs.ao_samples;
+      parallel_for((int64_t)n, 64, [&](int64_t b, int64_t e) {
+        for (int64_t i = b; i < e; i++) {
+          if (!hit_ok[i]) continue;
+          vec3 hn = hit_n[i], o = hit_p[i] + hn * aeps, T, B;
+          onb(hn, T, B);
+          uint32_t scr = hash_u32((uint32_t)ss.texel[i] * 747796405u + 11u);
+          int hits = 0;
+          for (int k = 0; k < N; k++) {
+            vec2 xi = hammersley2((uint32_t)k, (uint32_t)N, scr);
+            float r = std::sqrt(xi.x), phi = 2.f * kPi * xi.y;
+            vec3 d = T * (r * std::cos(phi)) + B * (r * std::sin(phi)) + hn * std::sqrt(std::fmax(0.f, 1.f - xi.x));
+            if (high_all.bvh.occluded(o, d, 0.f, maxd)) hits++;
+          }
+          ss.ao[i] = 1.f - (float)hits / N;
+        }
+      });
+      denoise_samples(ss, ss.ao);
+    }
     Json sj = Json::object();
     sj.set("misses", (int64_t)misses.load());
     sj.set("miss_fraction", n ? (double)misses.load() / n : 0.0);
@@ -560,6 +640,8 @@ void bake_normals(const Mesh& low, const Mesh* high, std::vector<SampleSet>& set
   st.set("sets", sets_j);
   st.set("miss_fraction", samples_total ? (double)misses_total / samples_total : 0.0);
   if (high) st.set("groups", gj);
+  st.set("ao", ao_high ? "high" : "low");
+  if (cage_m) st.set("cage", "mesh");
   Json wj = Json::array();
   for (auto& w : warnings) wj.push(w);
   st.set("warnings", wj);

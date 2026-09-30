@@ -98,6 +98,17 @@ sed 's/"high": "..\/examples\/assets\/boltplate_high.glb", //' "$W/bake.patina.j
 "$BIN" export "$W/bevel.patina.json" --preset gltf --out "$W/tex_bevel" --compact >/dev/null || fail "bevel-only bake + export"
 ok "normal bake: name-matched groups, no misses, anti-skew, bevel shader"
 
+# explicit cage mesh, painted cage (mask stack), AO traced from the high poly
+sed 's/"cage": 0.03, "depth": 0.03/"cage_mesh": "..\/examples\/assets\/boltplate_cage.glb", "depth": 0.03/' "$W/bake.patina.json" > "$W/bake_cage.patina.json"
+out=$("$BIN" bake "$W/bake_cage.patina.json" --force --compact)
+[ "$(echo "$out" | json "(d['stats']['normal']['cage'], d['stats']['normal']['miss_fraction'] == 0, d['stats']['normal']['ao'])")" = "('mesh', True, 'high')" ] || fail "cage mesh bake"
+sed 's/"cage": 0.03, "depth": 0.03/"cage": 0.005, "depth": 0.03/' "$W/bake.patina.json" > "$W/bake_tight.patina.json"
+sed 's/"cage": 0.03, "depth": 0.03/"cage": 0.005, "depth": 0.03, "cage_mask": {"to": 0.03, "mask": [{"type": "select", "parts": ["Bar_low"]}]}/' "$W/bake.patina.json" > "$W/bake_painted.patina.json"
+tight=$("$BIN" bake "$W/bake_tight.patina.json" --force --compact | json "d['stats']['normal']['sets']['Bar']['miss_fraction']")
+painted=$("$BIN" bake "$W/bake_painted.patina.json" --force --compact | json "d['stats']['normal']['sets']['Bar']['miss_fraction']")
+"$PY" -c "import sys; sys.exit(0 if float('$painted') < float('$tight') and float('$tight') > 0 else 1)" || fail "painted cage should fix misses ($tight -> $painted)"
+ok "explicit cage mesh, painted cage mask, AO from the high poly"
+
 # example project: UV-space wood grain, mask range, all three lighting environments
 [ "$("$BIN" validate examples/projects/barrel.patina.json --compact | json "d['ok']")" = "True" ] || fail "validate barrel example"
 for env in studio procedural third_party/hdri/studio_small_09_1k.hdr; do

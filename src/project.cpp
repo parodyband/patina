@@ -22,6 +22,8 @@ BakeSettings Project::bake_settings() const {
   BakeSettings b;
   b.from_json(doc["bake"]);
   if (!b.normal.high.empty()) b.normal.high = path_abs(resolve(b.normal.high));
+  if (!b.normal.cage_mesh.empty()) b.normal.cage_mesh = path_abs(resolve(b.normal.cage_mesh));
+  b.normal.base_dir = dir;
   return b;
 }
 float Project::height_depth() const { return doc.numf("height_depth", 0.005f); }

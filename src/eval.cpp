@@ -1518,6 +1518,37 @@ static void eval_layer_list(const Json& layers, Ctx& c, Stack& st) {
 }
 
 // ---------------------------------------------------------------- entry
+std::vector<float> evaluate_mask(const Json& mask, const Baked& bk, int set, const std::string& base_dir,
+                                 std::vector<std::string>* warnings) {
+  Project p;
+  p.dir = base_dir;
+  p.doc = Json::object();
+  const SampleSet& ss = bk.sets[set];
+  Ctx c;
+  c.proj = &p;
+  c.bk = &bk;
+  c.mesh = bk.mesh.get();
+  c.ss = &ss;
+  c.n = ss.size();
+  c.center = c.mesh->center();
+  c.bmin = c.mesh->bmin;
+  c.bsize = c.mesh->size();
+  c.ext = c.mesh->max_extent();
+  std::unordered_map<std::string, std::vector<float>> masks;
+  std::vector<std::string> local_warnings;
+  c.masks = &masks;
+  c.warnings = warnings ? warnings : &local_warnings;
+  EvalOptions opt;
+  c.opt = &opt;
+  Stack st;
+  st.init(c.n);
+  c.stack = &st;
+  c.path = "bake.normal";
+  std::vector<float> out;
+  if (!eval_mask_stack(mask, c, out)) out.assign(c.n, 1.f);
+  return out;
+}
+
 SetResult evaluate_set(const Project& proj, const Baked& bk, int set, const EvalOptions& opt) {
   SetResult r;
   const SampleSet& ss = bk.sets[set];

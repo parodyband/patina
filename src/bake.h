@@ -26,6 +26,13 @@ struct NormalBakeSettings {
   bool bevel_same_part = true;   // only round against the same part (touching parts stay crisp)
   bool denoise = true;
   float curvature = 1.f;         // how much the baked normal adds to the curvature map (edge wear follows it)
+  Json cage_mask;                 // mask stack: where it is 1 the cage grows to cage_to (Toolbag's offset map)
+  float cage_to = 0.06f;
+  Json skew_mask;                 // mask stack: where it is 1 skew becomes skew_to (Toolbag's skew map)
+  float skew_to = 1.f;
+  std::string cage_mesh;          // explicit cage (absolute path), same triangles as the low; overrides cage/skew
+  bool ao_from_high = true;       // trace AO from the high poly (whole mesh: parts occlude each other)
+  std::string base_dir;           // project directory for mask files (not part of the settings hash)
 
   bool active() const { return !high.empty() || bevel_radius > 0.f; }
   void from_json(const Json& j);
@@ -83,7 +90,9 @@ std::shared_ptr<Baked> bake_mesh(std::shared_ptr<const Mesh> mesh, const std::ve
                                  const std::string& cache_dir, bool force);
 
 // Normal bake (bake_normal.cpp): fills SampleSet::nmap/nmiss and adds normal-derived curvature.
-void bake_normals(const Mesh& low, const Mesh* high, std::vector<SampleSet>& sets, const BakeSettings& s, Json& stats);
+void bake_normals(Baked& bk, const Mesh* high, const BakeSettings& s, Json& stats);
+// Edge-aware 3x3 smoothing of per-sample scalars (never across UV gaps or distant surfaces).
+void denoise_samples(const SampleSet& ss, std::vector<float>& v);
 
 // Scatter per-sample values into a full padded image (every texel filled from its nearest sample).
 void to_image(const SampleSet& ss, const float* samples, int comps, float* out_image);

@@ -50,7 +50,7 @@ import bpy
 import bmesh
 from mathutils import Matrix
 
-ASSET_NAMES = ("crate", "barrel", "hammer", "suzanne", "panel", "boltplate_low", "boltplate_high")
+ASSET_NAMES = ("crate", "barrel", "hammer", "suzanne", "panel", "boltplate_low", "boltplate_high", "boltplate_cage")
 
 UV_ANGLES = (66.0, 55.0, 45.0, 35.0)   # smart-project angle limits tried in order
 UV_ISLAND_MARGIN = 0.02                # smart project margin
@@ -644,6 +644,23 @@ def build_boltplate_low():
     return [plate, bar]
 
 
+def build_boltplate_cage():
+    """Bake test, explicit cage: the low boxes pushed out along averaged vertex normals. Same triangles
+    in the same order as boltplate_low (bake.normal.cage_mesh)."""
+    m = make_material("Cage", (0.5, 0.5, 0.5), 0.0, 0.5)
+    objs = []
+    for name, size, cz in (("Plate_cage", PLATE, PLATE[2] / 2), ("Bar_cage", BAR, PLATE[2] + PANEL + BAR[2] / 2)):
+        bm = _box_bm(*size, cz=cz)
+        bm.normal_update()
+        for v in bm.verts:
+            v.co += v.normal * 0.03
+        o = object_from_bmesh(name, bm, [m])
+        o.data.shade_flat()
+        o["patina_skip_uv"] = True
+        objs.append(o)
+    return objs
+
+
 def build_boltplate_high():
     """Bake test, high poly: beveled plate with a raised centre panel and six hex bolts; beveled bar
     with two bolts. Part names match the low file (Plate_high <- Plate_low)."""
@@ -769,6 +786,7 @@ def build_panel():
 
 BUILDERS = {"crate": build_crate, "barrel": build_barrel, "hammer": build_hammer,
             "boltplate_low": build_boltplate_low, "boltplate_high": build_boltplate_high,
+            "boltplate_cage": build_boltplate_cage,
             "suzanne": build_suzanne, "panel": build_panel}
 
 

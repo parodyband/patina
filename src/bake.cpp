@@ -236,7 +236,7 @@ void from_image(const SampleSet& ss, const float* img, int comps, float* out) {
 }
 
 // Small 3x3 tent blur in texel space (via padding) to remove Monte Carlo grain.
-static void denoise(SampleSet& ss, std::vector<float>& v) {
+void denoise_samples(const SampleSet& ss, std::vector<float>& v) {
   if (ss.size() == 0) return;
   int res = ss.res;
   std::vector<float> img((size_t)res * res);
@@ -337,7 +337,7 @@ static void bake_ao(const Mesh& m, const BVH& bvh, SampleSet& ss, const BakeSett
       return valid ? 1.f - (float)hits / valid : 1.f;
     }
   });
-  denoise(ss, ss.ao);
+  denoise_samples(ss, ss.ao);
 }
 
 static void bake_thickness(const Mesh& m, const BVH& bvh, SampleSet& ss, const BakeSettings& s) {
@@ -369,7 +369,7 @@ static void bake_thickness(const Mesh& m, const BVH& bvh, SampleSet& ss, const B
       return valid ? saturate(sum / (valid * maxd)) : 1.f;
     }
   });
-  denoise(ss, ss.thickness);
+  denoise_samples(ss, ss.thickness);
 }
 
 // ---------------------------------------------------------------- curvature
@@ -548,13 +548,19 @@ std::shared_ptr<Baked> bake_mesh(std::shared_ptr<const Mesh> mesh, const std::ve
   Timer total;
 
   // bump when baker output changes so stale disk caches are never reused
-  static const uint64_t kBakerVersion = 4;
+  static const uint64_t kBakerVersion = 5;
   uint64_t key = fnv1a(&kBakerVersion, sizeof kBakerVersion, m.content_hash ^ s.hash());
   for (int r : res_per_set) key = fnv1a(&r, sizeof r, key);
   std::shared_ptr<Mesh> high;
   if (!s.normal.high.empty()) {
     high = std::make_shared<Mesh>(load_mesh(s.normal.high));
     key = fnv1a(&high->content_hash, sizeof high->content_hash, key);
+  }
+  if (!s.normal.cage_mesh.empty()) {
+    std::string bytes;
+    if (!read_file(s.normal.cage_mesh, bytes)) fail("cage mesh not found: '%s'", s.normal.cage_mesh.c_str());
+    uint64_t h = fnv1a(bytes);
+    key = fnv1a(&h, sizeof h, key);
   }
   bk->key = key;
 
@@ -591,7 +597,7 @@ std::shared_ptr<Baked> bake_mesh(std::shared_ptr<const Mesh> mesh, const std::ve
     bake_curvature(m, es, ptrs, s);
     stats.set("curvature_ms", t.ms());
     stats.set("curvature_edge_samples", (int64_t)es.p.size());
-    if (s.normal.active()) bake_normals(m, high.get(), bk->sets, s, stats);
+    if (s.normal.active()) bake_normals(*bk, high.get(), s, stats);
     if (!cpath.empty()) {
       try { save_cache(cpath, bk->sets); } catch (const std::exception&) { /* cache is best-effort */ }
     }

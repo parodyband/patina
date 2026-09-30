@@ -113,7 +113,10 @@ static std::string run_capture(const std::string& cmd, int* status) {
 
 static std::string curl_cmd(int timeout_s) {
 #if defined(_WIN32)
-  std::string curl = "curl.exe";
+  // Windows' own curl (Schannel + the Windows certificate store); a curl found first on PATH (e.g. Git's
+  // mingw curl when run from Git Bash) may lack a usable CA bundle
+  std::string sys = env("SystemRoot").empty() ? "C:\\Windows" : env("SystemRoot");
+  std::string curl = file_exists(sys + "\\System32\\curl.exe") ? shell_quote(sys + "\\System32\\curl.exe") : "curl.exe";
 #else
   std::string curl = "curl";
 #endif

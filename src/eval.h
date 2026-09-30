@@ -44,6 +44,12 @@ struct SetResult {
 
 SetResult evaluate_set(const Project& proj, const Baked& bk, int set, const EvalOptions& opt);
 
+// Evaluates a mask stack (a layer's "mask" list) on one texture set's samples outside any layer stack,
+// for bake-time masks such as the normal baker's cage and skew masks. Layer/stack references are not
+// available. Returns per-sample values in 0..1 (all 1 for an empty mask). Throws pt::Error.
+std::vector<float> evaluate_mask(const Json& mask, const Baked& bk, int set, const std::string& base_dir,
+                                 std::vector<std::string>* warnings);
+
 // Full-resolution padded images for rendering and export.
 struct SetMaps {
   std::string name;

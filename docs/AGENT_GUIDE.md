@@ -304,9 +304,14 @@ sit on top. It also feeds the curvature map, so `edge_wear` and dirt follow bake
 | `samples` | 4 | supersamples per texel. |
 | `bevel` | off | bevel shader: `{"radius": 0.006, "samples": 64, "min_angle": 10, "scope": "part"}` rounds edges sharper than `min_angle`. It runs on the high poly when there is one, otherwise on the low. `scope: "all"` also rounds where separate parts meet. |
 | `curvature` | 1 | how much the baked normal adds to the curvature map. |
+| `cage_mask` | none | paint the cage (Toolbag's offset map): `{"to": 0.06, "mask": [effects...]}` grows the cage toward `to` where the mask is 1. Any mask effect works: `paint` strokes, `box`, `sphere`, `select` parts, `gradient`. |
+| `skew_mask` | none | paint the skew: `{"to": 1, "mask": [...]}` pushes skew toward `to` where the mask is 1. |
+| `cage_mesh` | none | explicit cage: a pushed copy of the low with the same triangles (e.g. exported from Blender). Rays go from the cage through the low; `cage`, `skew` and the masks are ignored. |
+| `ao_from_high` | true | trace ambient occlusion from the high poly (bolts and creases occlude). The whole high mesh occludes, so parts ground each other. |
 | `ignore_backfaces`, `denoise` | true | |
 
-- Check `render(mode="bake_normal")` and `render(mode="bake_misses")` before texturing.
+- Check `render(mode="bake_normal")`, `render(mode="bake_misses")` and `render(mode="bake_ao")` before texturing.
+- Misses in one area only? Paint the cage there (`cage_mask`) instead of growing it everywhere, which invites bleed from neighbouring surfaces.
 - `bake` reports groups, misses and warnings (for example, a low part with no `_high` partner).
 - Low-poly rules still apply: triangulate, split UVs at hard edges, keep the high poly inside the cage.
 - A bevel-only bake is the fast path for hard-surface lows without a high poly: rounded edges and edge wear in one line.
