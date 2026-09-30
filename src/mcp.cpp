@@ -12,6 +12,11 @@
 #include "core.h"
 #include "json.h"
 
+#if defined(_WIN32)
+#include <fcntl.h>
+#include <io.h>
+#endif
+
 namespace pt {
 
 static const char* kInstructions = R"~(Patina is a headless, agent-first texturing engine (a Substance Painter for agents).
@@ -28,7 +33,8 @@ Workflow:
    blender(action="apply", project=...) builds Principled BSDF materials in a .blend and can render it.
 Coordinates: points are normalized bounding-box coords [x,y,z] in 0..1 (0 = min corner). +Y is up, +Z is front, +X is right.
 Lengths (radius/size) are fractions of the object's largest dimension. Noise "scale" = features per object size.
-Everything is deterministic (seeded) and cached; renders take ~100-500 ms, so iterate freely. Run independent assets in parallel (batch).)~";
+Everything is deterministic (seeded) and cached; renders take ~100-500 ms, so iterate freely. Run independent assets in parallel (batch).
+Read library(topic="guide") once for the full guide with recipes.)~";
 
 struct ToolDef { const char* name; const char* command; const char* description; const char* schema; };
 
@@ -72,7 +78,7 @@ static const ToolDef kTools[] = {
     {"export", "export", "Export final textures + manifest.json. preset: blender (default) | gltf | unreal | unity_hdrp | unity_urp | godot | maps. glb=true also writes a textured .glb.",
      R"~({"type":"object","properties":{"project":{"type":"string"},"preset":{"type":"string"},"out":{"type":"string"},"glb":{"type":"boolean"},
         "resolution":{"type":"integer"}},"required":["project"]})~"},
-    {"library", "library", "List smart materials (with params), field/generator types (with params), channels, blend modes, export presets, render modes. topic narrows it: smart_materials | fields | channels | blend_modes | export_presets | render | modifiers.",
+    {"library", "library", "List smart materials (with params), field/generator types (with params), channels, blend modes, export presets, render modes. topic narrows it: guide (full agent guide with recipes - read this first) | smart_materials | fields | channels | blend_modes | export_presets | render | modifiers.",
      R"~({"type":"object","properties":{"topic":{"type":"string"},"project":{"type":"string","description":"include the project's library/ folder"}}})~"},
     {"validate", "validate", "Check a project for errors and warnings (unknown keys, typos, missing parts) without rendering.",
      R"~({"type":"object","properties":{"project":{"type":"string"}},"required":["project"]})~"},
@@ -169,13 +175,19 @@ static Json call_tool(const std::string& name, const Json& args) {
 }
 
 int run_mcp_server() {
+#if defined(_WIN32)
+  // JSON-RPC lines must not get \r\n translation
+  _setmode(_fileno(stdout), _O_BINARY);
+  _setmode(_fileno(stdin), _O_BINARY);
+#endif
   std::atomic<int> inflight{0};
   std::mutex cv_m;
   std::condition_variable cv;
   const int max_concurrent = 32;
   std::string line;
   while (std::getline(std::cin, line)) {
-    if (line.empty() || line == "\r") continue;
+    if (!line.empty() && line.back() == '\r') line.pop_back();
+    if (line.empty()) continue;
     Json msg;
     std::string err;
     if (!Json::try_parse(line, msg, err)) {

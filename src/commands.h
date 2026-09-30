@@ -16,6 +16,7 @@ struct CommandOutput {
 // "variants", "export", "library", "batch", "blender"). Throws pt::Error on failure.
 CommandOutput run_command(const std::string& name, const Json& args);
 std::vector<std::string> command_names();
+const char* agent_guide();  // docs/AGENT_GUIDE.md, embedded at build time
 
 // Load + bake (cached) + evaluate a project into padded maps (used by the viewer).
 struct EvaluatedProject {

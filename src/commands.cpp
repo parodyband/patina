@@ -18,6 +18,8 @@
 
 namespace pt {
 
+const char* agent_guide();
+
 // ---------------------------------------------------------------- session caches (shared by concurrent requests)
 namespace {
 struct MeshEntry { int64_t mtime; std::shared_ptr<const Mesh> mesh; };
@@ -153,6 +155,7 @@ CommandOutput cmd_new(const Json& a) {
   std::string pdir = path_dir(path_abs(path));
   make_dirs(pdir);
   Json doc = new_project_doc(path_relative(mesh, pdir), *m, std::clamp(a.integer("resolution", 2048), 16, 16384));
+  doc.ref("export").set("dir", "textures/" + sanitize_filename(a.str("name", path_stem(path))));
   if (a.has("name")) doc.set("name", a["name"]);
   if (a.has("preset")) doc.ref("export").set("preset", a["preset"]);
   // optional starting materials: "smart": "painted_metal" | {"material":..,"params":..} | {"SetName": {...}, ...}
@@ -440,7 +443,7 @@ CommandOutput cmd_export(const Json& a) {
   Timer total;
   Project p = load_project_arg(a);
   std::string preset = a.str("preset", p.doc["export"].str("preset", "blender"));
-  std::string out = a.str("out", p.resolve(p.doc["export"].str("dir", "textures")));
+  std::string out = a.str("out", p.resolve(p.doc["export"].str("dir", "textures/" + sanitize_filename(p.name()))));
   int res = a.integer("resolution", 0);
   Json bake_stats;
   auto bk = get_bake(p, res, false, &bake_stats);
@@ -462,6 +465,11 @@ CommandOutput cmd_library(const Json& a) {
   std::string topic = a.str("topic", "");
   CommandOutput o;
   Json j = Json::object();
+  if (topic == "guide") {
+    j.set("guide", agent_guide());
+    o.result = j;
+    return o;
+  }
   if (topic.empty() || topic == "smart_materials") j.set("smart_materials", smart_material_catalog(dir));
   if (topic.empty() || topic == "fields") j.set("fields (use in masks and as channel values)", field_catalog());
   if (topic.empty() || topic == "channels") {
@@ -504,10 +512,7 @@ std::string find_blender() {
 #elif defined(_WIN32)
   std::string root = "C:/Program Files/Blender Foundation";
   if (is_directory(root)) {
-    std::error_code ec;
-    std::vector<std::string> cands;
-    for (auto& f : list_dir(root)) (void)f;
-    // list_dir only returns files; probe common versioned folders instead
+    // probe versioned install folders, newest first
     for (int major = 6; major >= 3; major--)
       for (int minor = 9; minor >= 0; minor--) {
         std::string c = strf("%s/Blender %d.%d/blender.exe", root.c_str(), major, minor);
@@ -556,7 +561,7 @@ CommandOutput cmd_blender(const Json& a) {
     std::string manifest = a.str("manifest", "");
     if (manifest.empty() && a.has("project")) {
       Project p = load_project_arg(a);
-      manifest = path_join(p.resolve(p.doc["export"].str("dir", "textures")), "manifest.json");
+      manifest = path_join(p.resolve(p.doc["export"].str("dir", "textures/" + sanitize_filename(p.name()))), "manifest.json");
     }
     if (manifest.empty()) fail("apply needs \"manifest\" (from export) or \"project\"");
     args.push_back("--manifest"); args.push_back(manifest);
@@ -676,6 +681,13 @@ EvaluatedProject evaluate_project_maps(const std::string& project, const Json* d
   for (size_t i = 0; i < results.size(); i++) ev.maps[i] = make_maps(ev.bk->sets[i], results[i], extra_maps_for_mode(mode));
   ev.eval_ms = te.ms();
   return ev;
+}
+
+const char* agent_guide() {
+  static const char* text =
+#include "patina_guide.inc"
+      ;
+  return text;
 }
 
 std::vector<std::string> command_names() {

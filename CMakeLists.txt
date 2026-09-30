@@ -43,6 +43,22 @@ add_library(patina_core STATIC
   src/mcp.cpp
 )
 target_include_directories(patina_core PUBLIC src third_party)
+
+# Embed docs/AGENT_GUIDE.md so agents can read it through `library topic=guide` (MCP) / `patina guide`.
+# Split into chunks: MSVC limits the size of a single string literal.
+set(PATINA_GUIDE ${CMAKE_SOURCE_DIR}/docs/AGENT_GUIDE.md)
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${PATINA_GUIDE})
+file(READ ${PATINA_GUIDE} PATINA_GUIDE_TEXT)
+string(LENGTH "${PATINA_GUIDE_TEXT}" PATINA_GUIDE_LEN)
+set(PATINA_GUIDE_INC "")
+set(_pos 0)
+while(_pos LESS PATINA_GUIDE_LEN)
+  string(SUBSTRING "${PATINA_GUIDE_TEXT}" ${_pos} 6000 _chunk)
+  string(APPEND PATINA_GUIDE_INC "R\"PGUIDE(${_chunk})PGUIDE\"\n")
+  math(EXPR _pos "${_pos} + 6000")
+endwhile()
+file(WRITE ${CMAKE_BINARY_DIR}/generated/patina_guide.inc "${PATINA_GUIDE_INC}")
+target_include_directories(patina_core PRIVATE ${CMAKE_BINARY_DIR}/generated)
 target_link_libraries(patina_core PUBLIC patina_thirdparty)
 find_package(Threads REQUIRED)
 target_link_libraries(patina_core PUBLIC Threads::Threads)

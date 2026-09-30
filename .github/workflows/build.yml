@@ -1,0 +1,52 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            name: macos-arm64
+          - os: windows-latest
+            name: windows-x64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up MSVC
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Install Ninja (macOS)
+        if: runner.os == 'macOS'
+        run: brew install ninja
+
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Test
+        shell: bash
+        env:
+          PY: ${{ runner.os == 'Windows' && 'python' || 'python3' }}
+        run: bash tests/run_tests.sh build/patina
+
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: patina-${{ matrix.name }}
+          path: |
+            build/patina
+            build/patina.exe
+            tools/blender/patina_blender.py
+            docs/AGENT_GUIDE.md
+          if-no-files-found: ignore

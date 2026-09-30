@@ -1,4 +1,5 @@
 // patina - agent-first texturing engine. CLI entry point.
+#include <cctype>
 #include <cstdio>
 #include <iostream>
 #include <iterator>
@@ -34,6 +35,7 @@ usage: patina <command> [args] [--flags]      (all commands print JSON)
   batch    --do render|export <p1> <p2> ...     same command on many projects
   blender  export|apply [--flags]              drive Blender headless (see docs)
   call     <command> '<json args>'             generic JSON call (identical to MCP tools)
+  guide                                        print the agent guide (docs/AGENT_GUIDE.md)
   mcp                                          run the MCP server on stdio
   view     <project>                           native viewer window (live reload)
   bench    <mesh> [--resolution 2048]          performance benchmark
@@ -68,6 +70,7 @@ int main(int argc, char** argv) {
   std::string cmd = argv[1];
   if (cmd == "version" || cmd == "--version") { printf("patina 0.1.0 (%d threads)\n", thread_count()); return 0; }
   if (cmd == "mcp") return run_mcp_server();
+  if (cmd == "guide") { fputs(agent_guide(), stdout); return 0; }
 
   // generic flag parsing
   std::vector<std::string> pos;
