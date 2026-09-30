@@ -3,7 +3,8 @@
 usage: python bench/barrel/score.py <patina.exe> <results_dir> <run_dir> [<run_dir> ...]
 
 Each run_dir is a workspace that received TASK.md. For every run this writes, under results_dir/<run name>/:
-standardized renders (same cameras and lighting for everyone) and metrics.json; then results.json and
+standardized renders (same cameras and lighting for everyone, plus wireframes and UV layouts) and
+metrics.json; then results.json and
 results.md for all runs. A run may contain meta.json ({"model": ..., "started": ..., "finished": ...,
 "exit_code": ...}) written by the harness.
 """
@@ -15,8 +16,9 @@ import sys
 VIEWS = {
     "hero": '["iso"]',
     "back": '["iso_back"]',
-    "top_closeup": '[{"azimuth":25,"elevation":35,"zoom":2.6,"target":[0.5,0.85,0.7]}]',
-    "hoop_closeup": '[{"azimuth":15,"elevation":10,"zoom":4,"target":[0.5,0.3,1]}]',
+    "front_closeup": '[{"azimuth":20,"elevation":12,"zoom":2.4,"target":[0.5,0.45,0.95]}]',
+    "top_closeup": '[{"azimuth":30,"elevation":50,"zoom":3,"target":[0.5,1,0.5]}]',
+    "side": '["right"]',
 }
 
 
@@ -55,11 +57,11 @@ def score_run(patina, run_dir, out_dir):
                 m["mesh"]["texture_sets"][sname] = {k: s.get(k) for k in ("triangles", "uv_area", "uv_overlap_fraction",
                                                                          "texel_density_p5_p95", "texel_density_spread", "warnings")}
             sets = m["mesh"]["texture_sets"].values()
-            c["triangles <= 50k"] = info["triangles"] <= 50000
-            c[">= 3 texture sets"] = len(info["texture_sets"]) >= 3
-            c["height 0.7..1.0 m"] = 0.7 <= b["size"][1] <= 1.0
+            c["triangles <= 60k"] = info["triangles"] <= 60000
+            c[">= 5 texture sets"] = len(info["texture_sets"]) >= 5
+            c["length 0.75..1.2 m front-back"] = 0.75 <= b["size"][2] <= 1.2
             c["on the ground (min y ~ 0)"] = abs(b["min"][1]) < 0.01
-            c["centred (|x|,|z| < 0.05)"] = abs(b["center"][0]) < 0.05 and abs(b["center"][2]) < 0.05
+            c["centred (|x|,|z| < 0.1)"] = abs(b["center"][0]) < 0.1 and abs(b["center"][2]) < 0.1
             c["no UV overlap (< 0.1%)"] = all((s["uv_overlap_fraction"] or 0) < 0.001 for s in sets)
             c["texel density spread < 2"] = all((s["texel_density_spread"] or 99) < 2.0 for s in sets)
         else:
@@ -72,10 +74,15 @@ def score_run(patina, run_dir, out_dir):
             r, code = run([patina, "render", proj, "--views", views, "--size", "900", "--resolution", "2048",
                            "--out", os.path.join(out, vname + ".png"), "--compact"])
             m["renders"][vname] = os.path.basename(r.get("image", "")) if code == 0 else r.get("error")
-        for mode in ("clay", "uv_checker"):
+        for mode in ("clay", "uv_checker", "wireframe"):
             r, code = run([patina, "render", proj, "--views", "iso,iso_back", "--mode", mode, "--size", "600",
                            "--out", os.path.join(out, mode + ".png"), "--compact"])
             m["renders"][mode] = os.path.basename(r.get("image", "")) if code == 0 else r.get("error")
+        r, code = run([patina, "render", proj, "--views", VIEWS["front_closeup"], "--mode", "wireframe", "--size", "900",
+                       "--out", os.path.join(out, "wireframe_closeup.png"), "--compact"])
+        m["renders"]["wireframe_closeup"] = os.path.basename(r.get("image", "")) if code == 0 else r.get("error")
+        r, code = run([patina, "render", proj, "--uv-layout", "--size", "512", "--out", os.path.join(out, "uv_layout.png"), "--compact"])
+        m["renders"]["uv_layout"] = os.path.basename(r.get("image", "")) if code == 0 else r.get("error")
     m["hard_passed"] = sum(1 for v in c.values() if v)
     m["hard_total"] = len(c)
     json.dump(m, open(os.path.join(out, "metrics.json"), "w"), indent=1)

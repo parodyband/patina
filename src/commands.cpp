@@ -360,7 +360,10 @@ CommandOutput cmd_render(const Json& a) {
   Timer tr;
   RgbImage img;
   bool sheet = a.boolean("sheet", false) || ro.mode == "sheet";
-  if (sheet) {
+  bool uv_layout = a.boolean("uv_layout", false) || ro.mode == "uv_layout";
+  if (uv_layout) {
+    img = render_uv_layout(*bk->mesh, maps, std::clamp(a.integer("size", 512), 128, 2048), p.name() + " UV layout");
+  } else if (sheet) {
     img = render_texture_sheet(maps, std::clamp(a.integer("size", 256), 64, 1024), p.name() + " texture maps");
   } else {
     auto views = parse_views(a["views"]);
@@ -369,7 +372,7 @@ CommandOutput cmd_render(const Json& a) {
   }
   double render_ms = tr.ms();
   std::string png = encode_png_rgb8(img.w, img.h, img.px.data());
-  std::string out = a.str("out", default_render_path(p, sheet ? "_sheet" : (ro.mode == "lit" ? "" : "_" + sanitize_filename(ro.mode))));
+  std::string out = a.str("out", default_render_path(p, uv_layout ? "_uvs" : sheet ? "_sheet" : (ro.mode == "lit" ? "" : "_" + sanitize_filename(ro.mode))));
   make_dirs(path_dir(path_abs(out)));
   write_file_or_throw(out, png);
 
@@ -511,6 +514,7 @@ CommandOutput cmd_library(const Json& a) {
     j.set("view_formats", "comma list of names, \"az:el\" in degrees, or objects {\"azimuth\":30,\"elevation\":15,\"zoom\":4,"
                           "\"target\":[0.5,0.5,1]} for close-ups (target in bbox 0..1 coordinates; zoom 1 = whole object). "
                           "Render close-ups with a higher \"resolution\" (texture res) to see fine detail.");
+    j.set("uv_layout", "uv_layout=true (CLI --uv-layout) draws each texture set's UV triangles over its base color instead of 3D views");
     j.set("environment", "lighting for lit/clay modes: \"studio\" (default, built-in HDRI), \"procedural\" (analytic studio) or a "
                          "path to an equirectangular .hdr; env_rotation (degrees around up) moves the reflections, env_intensity and "
                          "exposure scale it. Set project defaults with {\"render\": {\"environment\": ..., \"env_rotation\": ...}}.");

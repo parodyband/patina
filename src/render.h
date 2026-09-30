@@ -43,6 +43,7 @@ struct RgbImage {
 RgbImage render_view(const Mesh& m, const BVH& bvh, const std::vector<SetMaps>& maps, const ViewSpec& v, const RenderOptions& o);
 RgbImage render_views(const Mesh& m, const BVH& bvh, const std::vector<SetMaps>& maps, const std::vector<ViewSpec>& views, const RenderOptions& o);
 RgbImage render_texture_sheet(const std::vector<SetMaps>& maps, int thumb, const std::string& title);
+RgbImage render_uv_layout(const Mesh& m, const std::vector<SetMaps>& maps, int size, const std::string& title);
 RgbImage compose_grid(const std::vector<RgbImage>& tiles, const std::vector<std::string>& labels, int columns, const std::string& title);
 void draw_text(RgbImage& img, int x, int y, const std::string& text, uint8_t r, uint8_t g, uint8_t b, int scale);
 

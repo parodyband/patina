@@ -88,6 +88,7 @@ Json render_modes() {
   j.set("mask:<layer_id>", "a layer's effective mask in red over clay - debug where a layer applies");
   j.set("islands", "random color per UV island");
   j.set("uv_checker", "UV checker to inspect distortion/texel density");
+  j.set("wireframe", "clay with every triangle edge drawn: topology, density and bevels at a glance");
   j.set("parts", "random color per mesh part");
   return j;
 }
@@ -405,7 +406,7 @@ RgbImage render_view(const Mesh& m, const BVH& bvh, const std::vector<SetMaps>& 
           vec3 bc{base[0], base[1], base[2]};
           c = shade_pbr(L, N, V, bc, metal, rough, ao, key_vis()) * o.exposure + vec3(em[0], em[1], em[2]);
           if (op < 1.f) c = lerp(lerp(vec3(0.205f), vec3(0.115f), fy), c, op);
-        } else if (mode == "clay" || !mask_key.empty() || mode == "islands" || mode == "parts" || mode == "uv_checker") {
+        } else if (mode == "clay" || mode == "wireframe" || !mask_key.empty() || mode == "islands" || mode == "parts" || mode == "uv_checker") {
           vec3 bc{0.22f, 0.22f, 0.22f};
           if (!mask_key.empty() && sm) {
             auto it = sm->extra.find(mask_key);
@@ -420,8 +421,23 @@ RgbImage render_view(const Mesh& m, const BVH& bvh, const std::vector<SetMaps>& 
             bc = (k & 1) ? vec3(0.8f, 0.8f, 0.8f) : vec3(0.08f, 0.08f, 0.08f);
             if (((int)std::floor(uv.x * 2) + (int)std::floor(uv.y * 2)) & 1) bc = bc * vec3(1.f, 0.55f, 0.35f);
           }
-          vec3 Nc = mode == "clay" || !mask_key.empty() ? N : nrm;
+          vec3 Nc = mode == "clay" || mode == "wireframe" || !mask_key.empty() ? N : nrm;
           c = shade_pbr(L, Nc, V, bc, 0.f, 0.55f, 1.f, key_vis()) * o.exposure;
+          if (mode == "wireframe") {  // distance (pixels) to the nearest triangle edge on screen
+            const SV &A = sv[i0], &B = sv[i1], &C = sv[i2];
+            float px = x + 0.5f, py = y + 0.5f;
+            float a2 = (B.x - A.x) * (C.y - A.y) - (B.y - A.y) * (C.x - A.x);
+            if (std::fabs(a2) > 1e-6f) {
+              float w0 = ((B.x - px) * (C.y - py) - (B.y - py) * (C.x - px)) / a2;
+              float w1 = ((C.x - px) * (A.y - py) - (C.y - py) * (A.x - px)) / a2;
+              float w2 = 1.f - w0 - w1;
+              auto len = [](const SV& p, const SV& q) { return std::fmax(1e-6f, std::hypot(p.x - q.x, p.y - q.y)); };
+              float d = std::fmin(std::fabs(w0 * a2) / len(B, C), std::fmin(std::fabs(w1 * a2) / len(C, A), std::fabs(w2 * a2) / len(A, B)));
+              float lw = 0.75f * ss;
+              float k = 1.f - smoothstep(lw * 0.5f, lw * 1.5f, d);
+              c = lerp(c, vec3(0.015f, 0.02f, 0.03f), k * 0.9f);
+            }
+          }
         } else if (mode == "basecolor") {
           c = vec3(linear_to_srgb(base[0]), linear_to_srgb(base[1]), linear_to_srgb(base[2])) * -1.f;
         } else if (mode == "emissive") {
@@ -556,6 +572,43 @@ static RgbImage thumb_of(const std::vector<float>& img, int comps, int res, int 
       }
   });
   return t;
+}
+
+// Flat UV layout per texture set: every UV triangle edge over the set's (dimmed) base colour.
+RgbImage render_uv_layout(const Mesh& m, const std::vector<SetMaps>& maps, int size, const std::string& title) {
+  std::vector<RgbImage> tiles;
+  std::vector<std::string> labels;
+  for (size_t s = 0; s < m.set_names.size(); s++) {
+    RgbImage img;
+    const SetMaps* sm = s < maps.size() && maps[s].res > 0 ? &maps[s] : nullptr;
+    if (sm) img = thumb_of(sm->ch[C_BASECOLOR], 3, sm->res, size, 0);
+    else { img.w = img.h = size; img.px.assign((size_t)size * size * 3, 40); }
+    for (auto& p : img.px) p = (uint8_t)(p * 0.45f);
+    auto plot = [&](int x, int y) {
+      if (x < 0 || y < 0 || x >= size || y >= size) return;
+      uint8_t* q = &img.px[((size_t)y * size + x) * 3];
+      q[0] = 255; q[1] = 214; q[2] = 110;
+    };
+    auto line = [&](vec2 a, vec2 b) {  // Bresenham
+      int x0 = (int)std::floor(a.x * size), y0 = (int)std::floor(a.y * size), x1 = (int)std::floor(b.x * size), y1 = (int)std::floor(b.y * size);
+      int dx = std::abs(x1 - x0), dy = -std::abs(y1 - y0), sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1, err = dx + dy;
+      for (int guard = 0; guard < 4 * size; guard++) {
+        plot(x0, y0);
+        if (x0 == x1 && y0 == y1) break;
+        int e2 = 2 * err;
+        if (e2 >= dy) { err += dy; x0 += sx; }
+        if (e2 <= dx) { err += dx; y0 += sy; }
+      }
+    };
+    for (size_t t = 0; t < m.tri_count(); t++) {
+      if (m.tri_set[t] != s) continue;
+      vec2 a = m.uv[m.idx[t * 3]], b = m.uv[m.idx[t * 3 + 1]], c = m.uv[m.idx[t * 3 + 2]];
+      line(a, b); line(b, c); line(c, a);
+    }
+    tiles.push_back(std::move(img));
+    labels.push_back(m.set_names[s] + " UVs");
+  }
+  return compose_grid(tiles, labels, 0, title);
 }
 
 RgbImage render_texture_sheet(const std::vector<SetMaps>& maps, int thumb, const std::string& title) {

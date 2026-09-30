@@ -65,13 +65,13 @@ static const ToolDef kTools[] = {
      "Render the textured asset (CPU PBR, headless) and return the image. views: comma list of front, back, left, right, top, bottom, "
      "iso, iso_back, iso_left, iso_back_left, low, or \"az:el\", or objects {azimuth, elevation, zoom, target:[x,y,z]} for close-ups. "
      "mode: lit | clay | basecolor | roughness | metallic | normal | height | ao | curvature | thickness | bake_ao | mask:<layer_id> | islands | parts | uv_checker. "
-     "sheet=true shows the flat texture maps instead. Lighting: a studio HDRI by default (environment=\"studio\"); "
+     "sheet=true shows the flat texture maps instead; uv_layout=true draws each texture set's UV layout. Lighting: a studio HDRI by default (environment=\"studio\"); "
      "environment can also be a path to an equirectangular .hdr or \"procedural\"; env_rotation (degrees) turns it to move reflections. "
      "A project's \"render\" block sets defaults.",
      R"~({"type":"object","properties":{"project":{"type":"string"},"views":{"description":"e.g. \"iso,iso_back,front,top\" by default"},
         "mode":{"type":"string"},"size":{"type":"integer","description":"pixels per view - default 512"},
         "resolution":{"type":"integer","description":"texture resolution used for the preview - default min of 1024 and the project resolution"},
-        "sheet":{"type":"boolean"},"out":{"type":"string"},"stats":{"type":"boolean"},"return_image":{"type":"boolean"},
+        "sheet":{"type":"boolean"},"uv_layout":{"type":"boolean"},"out":{"type":"string"},"stats":{"type":"boolean"},"return_image":{"type":"boolean"},
         "environment":{"type":"string","description":"studio (default HDRI) | procedural | path to an .hdr"},
         "env_rotation":{"type":"number","description":"degrees around the up axis"},"env_intensity":{"type":"number"},
         "exposure":{"type":"number"}},"required":["project"]})~"},

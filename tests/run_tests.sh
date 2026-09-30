@@ -43,12 +43,13 @@ echo "$out" | grep -q "did you mean 'basecolor'" || fail "typo suggestion"
 ok "typo -> did-you-mean error, project left untouched"
 
 # render all modes
-for mode in lit clay basecolor roughness metallic normal height ao curvature thickness bake_ao islands uv_checker mask:dust; do
+for mode in lit clay wireframe basecolor roughness metallic normal height ao curvature thickness bake_ao islands uv_checker mask:dust; do
   "$BIN" render "$W/crate.patina.json" --views iso --size 128 --mode "$mode" --out "$W/r_${mode/:/_}.png" --compact >/dev/null || fail "render $mode"
 done
-ok "render 14 modes"
+ok "render 15 modes"
 "$BIN" render "$W/crate.patina.json" --sheet --size 96 --out "$W/sheet.png" --compact >/dev/null || fail "sheet"
-ok "texture sheet"
+"$BIN" render "$W/crate.patina.json" --uv-layout --size 128 --out "$W/uvs.png" --compact >/dev/null || fail "uv layout"
+ok "texture sheet + UV layout"
 
 # every smart material evaluates
 mats=$("$BIN" library --topic smart_materials --compact | json "' '.join(d['smart_materials'].keys())")
