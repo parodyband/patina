@@ -1,0 +1,30 @@
+// Operations shared by the CLI and the MCP server. Every command takes and returns JSON.
+#pragma once
+#include <memory>
+
+#include "eval.h"
+#include "json.h"
+
+namespace pt {
+
+struct CommandOutput {
+  Json result;
+  std::vector<std::string> images;  // encoded PNG bytes (MCP returns these as image content)
+};
+
+// Dispatches a command by name ("inspect", "new", "get", "edit", "validate", "bake", "render",
+// "variants", "export", "library", "batch", "blender"). Throws pt::Error on failure.
+CommandOutput run_command(const std::string& name, const Json& args);
+std::vector<std::string> command_names();
+
+// Load + bake (cached) + evaluate a project into padded maps (used by the viewer).
+struct EvaluatedProject {
+  std::shared_ptr<Baked> bk;
+  std::vector<SetMaps> maps;
+  Json doc;
+  Json warnings;
+  double bake_ms = 0, eval_ms = 0;
+};
+EvaluatedProject evaluate_project_maps(const std::string& project, const Json* doc_override, int resolution, const std::string& mode);
+
+}  // namespace pt

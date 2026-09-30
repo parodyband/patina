@@ -1,0 +1,15 @@
+# build output
+build/
+build-*/
+*.o
+
+# local scratch / generated
+work/
+renders/
+.patina/
+.patina_bench/
+examples/_bridge_test/
+__pycache__/
+*.pyc
+*.tmp*
+.DS_Store
