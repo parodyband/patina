@@ -414,10 +414,54 @@ Json mesh_info(const Mesh& m) {
     Json pj = Json::array();
     for (int p : parts) pj.push(m.part_names[p]);
     sj.set("parts", pj);
+    sj.set("mirrored_triangles", flipped);
+    // UV overlap: rasterize this set's UV triangles (texel centres strictly inside) and count texels
+    // covered more than once; texel density spread: area-weighted p5..p95 of per-triangle density
+    // relative to the set's average (1.0 = perfectly uniform)
+    const int R = 512;
+    std::vector<uint8_t> cover((size_t)R * R, 0);
+    std::vector<std::pair<float, float>> dens;  // (relative density, 3D area)
+    double avg = surf > 0 ? std::sqrt(uv_area / surf) : 0;
+    for (size_t t = 0; t < m.tri_count(); t++) {
+      if (m.tri_set[t] != s) continue;
+      vec2 a = m.uv[m.idx[t * 3]] * (float)R, b = m.uv[m.idx[t * 3 + 1]] * (float)R, c = m.uv[m.idx[t * 3 + 2]] * (float)R;
+      float d = (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
+      vec3 pa = m.pos[m.idx[t * 3]], pb = m.pos[m.idx[t * 3 + 1]], pc = m.pos[m.idx[t * 3 + 2]];
+      float a3 = 0.5f * length(cross(pb - pa, pc - pa));
+      if (a3 > 1e-12f && avg > 0) dens.push_back({(float)(std::sqrt(std::fabs(d) * 0.5 / ((double)R * R) / a3) / avg), a3});
+      if (std::fabs(d) < 1e-9f) continue;
+      int x0 = std::max(0, (int)std::floor(std::fmin(a.x, std::fmin(b.x, c.x)))), x1 = std::min(R - 1, (int)std::ceil(std::fmax(a.x, std::fmax(b.x, c.x))));
+      int y0 = std::max(0, (int)std::floor(std::fmin(a.y, std::fmin(b.y, c.y)))), y1 = std::min(R - 1, (int)std::ceil(std::fmax(a.y, std::fmax(b.y, c.y))));
+      for (int y = y0; y <= y1; y++)
+        for (int x = x0; x <= x1; x++) {
+          float px = x + 0.5f, py = y + 0.5f;
+          float w0 = ((b.x - px) * (c.y - py) - (b.y - py) * (c.x - px)) / d;
+          float w1 = ((c.x - px) * (a.y - py) - (c.y - py) * (a.x - px)) / d;
+          float w2 = 1.f - w0 - w1;
+          const float e = 1e-4f;
+          if (w0 > e && w1 > e && w2 > e) { uint8_t& cv = cover[(size_t)y * R + x]; if (cv < 255) cv++; }
+        }
+    }
+    size_t covered = 0, over = 0;
+    for (uint8_t cv : cover) { covered += cv > 0; over += cv > 1; }
+    double overlap = covered ? (double)over / covered : 0.0;
+    sj.set("uv_overlap_fraction", overlap);
+    if (!dens.empty()) {
+      std::sort(dens.begin(), dens.end());
+      double tot = 0;
+      for (auto& d : dens) tot += d.second;
+      auto pct = [&](double q) { double acc = 0; for (auto& d : dens) { acc += d.second; if (acc >= q * tot) return (double)d.first; } return (double)dens.back().first; };
+      double p5 = pct(0.05), p95 = pct(0.95);
+      sj.set("texel_density_p5_p95", Json::array({Json(p5), Json(p95)}));
+      sj.set("texel_density_spread", p5 > 1e-9 ? p95 / p5 : 1e9);
+    }
     Json warn = Json::array();
+    if (overlap > 0.001) warn.push(strf("%.1f%% of covered texels are shared by overlapping UV triangles", overlap * 100.0));
     if (ulo.x < -0.001f || ulo.y < -0.001f || uhi.x > 1.001f || uhi.y > 1.001f)
       warn.push("UVs extend outside 0..1 (UDIMs/tiling are not supported yet); texels outside the tile are ignored");
     if (uv_area > 1.02) warn.push("total UV area > 1: UV islands overlap (mirrored/stacked UVs share texels)");
+    if (sj.has("texel_density_spread") && sj["texel_density_spread"].as_num() > 2.0)
+      warn.push(strf("uneven texel density: p95/p5 = %.1f (islands scaled differently or stretched)", sj["texel_density_spread"].as_num()));
     if (uv_area < 0.2) warn.push("UV area < 20% of the texture: low texel usage, consider re-packing");
     sj.set("warnings", warn);
     sets.set(m.set_names[s], sj);
