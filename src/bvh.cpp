@@ -19,20 +19,88 @@ constexpr int kBins = 16;
 constexpr int kMaxLeaf = 4;
 }  // namespace
 
+// Clip a convex polygon to the slab lo <= p[axis] <= hi (Sutherland-Hodgman, two planes).
+static void clip_poly(const std::vector<vec3>& in, int axis, float lo, float hi, std::vector<vec3>& out) {
+  std::vector<vec3> tmp;
+  auto clip = [&](const std::vector<vec3>& src, std::vector<vec3>& dst, float v, bool keep_below) {
+    dst.clear();
+    size_t n = src.size();
+    for (size_t i = 0; i < n; i++) {
+      vec3 a = src[i], b = src[(i + 1) % n];
+      bool ina = keep_below ? a[axis] <= v : a[axis] >= v;
+      bool inb = keep_below ? b[axis] <= v : b[axis] >= v;
+      if (ina) dst.push_back(a);
+      if (ina != inb) {
+        float t = (v - a[axis]) / (b[axis] - a[axis]);
+        dst.push_back(a + (b - a) * t);
+      }
+    }
+  };
+  clip(in, tmp, hi, true);
+  clip(tmp, out, lo, false);
+}
+
+// Early split clipping (Ernst & Greiner): large triangles get several tight bounding boxes, which
+// fixes the overlapping-slivers problem of long thin triangles (cylinders, planks).
+static void split_ref(const std::vector<vec3>& poly, const AABB& box, float thresh, int depth, uint32_t tri, std::vector<AABB>& boxes,
+                      std::vector<uint32_t>& ids) {
+  if (box.area() <= thresh || depth >= 6 || poly.size() < 3) {
+    boxes.push_back(box);
+    ids.push_back(tri);
+    return;
+  }
+  vec3 e = box.hi - box.lo;
+  int axis = e.x > e.y ? (e.x > e.z ? 0 : 2) : (e.y > e.z ? 1 : 2);
+  float mid = (box.lo[axis] + box.hi[axis]) * 0.5f;
+  std::vector<vec3> l, r;
+  clip_poly(poly, axis, box.lo[axis], mid, l);
+  clip_poly(poly, axis, mid, box.hi[axis], r);
+  for (auto* half : {&l, &r}) {
+    if (half->size() < 3) continue;
+    AABB b;
+    for (auto& p : *half) b.grow(p);
+    b.lo = vmax(b.lo, box.lo);
+    b.hi = vmin(b.hi, box.hi);
+    split_ref(*half, b, thresh, depth + 1, tri, boxes, ids);
+  }
+}
+
 void BVH::build(const std::vector<vec3>& pos, const std::vector<uint32_t>& idx) {
-  size_t nt = idx.size() / 3;
+  size_t ntri = idx.size() / 3;
   nodes.clear();
   tris.clear();
   tri_id.clear();
-  if (nt == 0) return;
-  std::vector<AABB> tb(nt);
+  if (ntri == 0) return;
+  // references (possibly several per triangle)
+  std::vector<AABB> tb;
+  std::vector<uint32_t> ref_tri;
+  {
+    double mean = 0;
+    std::vector<AABB> raw(ntri);
+    for (size_t t = 0; t < ntri; t++) {
+      for (int k = 0; k < 3; k++) raw[t].grow(pos[idx[t * 3 + k]]);
+      mean += raw[t].area();
+    }
+    mean /= ntri;
+    float thresh = (float)mean * 4.f;
+    tb.reserve(ntri * 2);
+    ref_tri.reserve(ntri * 2);
+    std::vector<vec3> poly(3);
+    for (size_t t = 0; t < ntri; t++) {
+      if (raw[t].area() <= thresh || tb.size() > ntri * 4) {
+        tb.push_back(raw[t]);
+        ref_tri.push_back((uint32_t)t);
+        continue;
+      }
+      for (int k = 0; k < 3; k++) poly[k] = pos[idx[t * 3 + k]];
+      split_ref(poly, raw[t], thresh, 0, (uint32_t)t, tb, ref_tri);
+    }
+  }
+  size_t nt = tb.size();
   std::vector<vec3> cen(nt);
   std::vector<uint32_t> order(nt);
   for (size_t t = 0; t < nt; t++) {
-    AABB b;
-    for (int k = 0; k < 3; k++) b.grow(pos[idx[t * 3 + k]]);
-    tb[t] = b;
-    cen[t] = (b.lo + b.hi) * 0.5f;
+    cen[t] = (tb[t].lo + tb[t].hi) * 0.5f;
     order[t] = (uint32_t)t;
   }
   nodes.reserve(nt * 2);
@@ -118,9 +186,10 @@ void BVH::build(const std::vector<vec3>& pos, const std::vector<uint32_t>& idx) 
   }
 
   tris.resize(nt);
-  tri_id = order;
+  tri_id.resize(nt);
   for (size_t i = 0; i < nt; i++) {
-    uint32_t t = order[i];
+    uint32_t t = ref_tri[order[i]];
+    tri_id[i] = t;
     vec3 a = pos[idx[t * 3]], b = pos[idx[t * 3 + 1]], c = pos[idx[t * 3 + 2]];
     tris[i] = {a, b - a, c - a};
   }

@@ -630,25 +630,52 @@ static void rot_basis(uint32_t h, vec3& a, vec3& b, vec3& d) {
   a = a2;
 }
 
+// Straight scratch segments: each 3D cell may hold a few random segments; distance is measured in the
+// sample's tangent plane, so any surface near a segment shows a clean straight line (not noise worms).
 static void f_scratches(const Json& s, Ctx& c, float* out) {
-  float scale = s.numf("scale", 6.f), len = std::fmax(1.f, s.numf("length", 10.f)), width = s.numf("width", 0.5f);
+  float scale = std::fmax(0.5f, s.numf("scale", 6.f)), len = std::fmax(0.05f, s.numf("length", 1.f));
+  float width = saturate(s.numf("width", 0.5f));
   float density = saturate(s.numf("density", 0.5f));
-  int layers = std::clamp(s.integer("layers", 4), 1, 12);
+  int per_cell = std::clamp(s.integer("layers", 3), 1, 8);
   uint32_t seed = (uint32_t)s.integer("seed", 0) * 7777u + 99u;
-  std::vector<vec3> A(layers), B(layers), D(layers);
-  for (int k = 0; k < layers; k++) rot_basis(hash_u32(seed + k * 31u), A[k], B[k], D[k]);
-  float line_w = 0.02f + 0.08f * saturate(width);
+  vec3 bias{0, 0, 0};
+  bool has_bias = s.has("direction");
+  if (has_bias) bias = parse_dir(s["direction"], vec3(1, 0, 0), c, "direction");
+  float half_w = 0.004f + 0.02f * width;  // in cell units
   par(c.n, [&](size_t i) {
     vec3 p = (c.ss->pos[i] - c.center) / c.ext * scale;
+    vec3 n = c.ss->nrm[i];
+    int cx = (int)std::floor(p.x), cy = (int)std::floor(p.y), cz = (int)std::floor(p.z);
     float v = 0;
-    for (int k = 0; k < layers; k++) {
-      float f = 1.f + k * 0.37f;
-      vec3 q{dot(p, A[k]) * f / len, dot(p, B[k]) * f, dot(p, D[k]) * f};
-      float line = 1.f - std::fabs(perlin3(q, seed + k * 101u));
-      float sl = smoothstep(1.f - line_w, 1.f, line);
-      float gate = smoothstep(0.55f - density * 0.5f, 0.6f - density * 0.5f, 0.5f + 0.5f * perlin3(q * 0.35f + vec3(13.1f), seed + k * 7u));
-      v = std::fmax(v, sl * gate);
-    }
+    for (int dz = -1; dz <= 1; dz++)
+      for (int dy = -1; dy <= 1; dy++)
+        for (int dx = -1; dx <= 1; dx++) {
+          uint32_t h0 = hash_u32((uint32_t)(cx + dx) * 0x8da6b343U ^ hash_u32((uint32_t)(cy + dy) * 0xd8163841U ^ hash_u32((uint32_t)(cz + dz) * 0xcb1ab31fU ^ seed)));
+          for (int k = 0; k < per_cell; k++) {
+            uint32_t h = hash_u32(h0 + (uint32_t)k * 0x9e3779b9U);
+            if (hash_float(h) > density) continue;
+            vec3 ctr{(float)(cx + dx) + hash_float(h ^ 0x1u), (float)(cy + dy) + hash_float(h ^ 0x2u), (float)(cz + dz) + hash_float(h ^ 0x3u)};
+            vec3 v0 = p - ctr;
+            float dn = dot(v0, n);
+            if (std::fabs(dn) > 0.6f) continue;  // segment too far above/below this surface
+            float z = hash_float(h ^ 0x4u) * 2.f - 1.f, phi = hash_float(h ^ 0x5u) * 2.f * kPi;
+            float r = std::sqrt(std::fmax(0.f, 1.f - z * z));
+            vec3 dir{r * std::cos(phi), r * std::sin(phi), z};
+            if (has_bias) dir = normalize(lerp(dir, bias * (dot(dir, bias) >= 0 ? 1.f : -1.f), 0.85f));
+            vec3 dt = dir - n * dot(dir, n);
+            float dl = length(dt);
+            if (dl < 0.2f) continue;  // segment points into the surface: would be a dot
+            dt = dt / dl;
+            vec3 vt = v0 - n * dn;
+            float L = len * (0.3f + 0.7f * hash_float(h ^ 0x6u)) * 0.5f;
+            float t = clampf(dot(vt, dt), -L, L);
+            float d = length(vt - dt * t);
+            float taper = 1.f - smoothstep(0.6f * L, L, std::fabs(dot(vt, dt)));  // thin out towards the ends
+            float w = half_w * (0.5f + hash_float(h ^ 0x7u)) * (0.4f + 0.6f * taper);
+            float line = (1.f - smoothstep(w * 0.5f, w, d)) * (0.5f + 0.5f * hash_float(h ^ 0x8u));
+            v = std::fmax(v, line);
+          }
+        }
     out[i] = v;
   });
 }
@@ -997,9 +1024,10 @@ static const std::vector<FieldDef>& field_defs() {
        {{"parts", "[]", "part names or globs, e.g. [\"Handle*\"] (see inspect)"}, {"islands", "[]", "UV island ids"}}, f_select},
       {"island_random", "procedural", "A random value per UV island (variation between planks/tiles).", {{"seed", "0", "seed"}}, f_island_random},
       {"part_random", "procedural", "A random value per mesh part.", {{"seed", "0", "seed"}}, f_part_random},
-      {"scratches", "generator", "Thin randomly-oriented scratches.",
-       {{"scale", "6", "scratch frequency"}, {"length", "10", "elongation"}, {"width", "0.5", "0..1 line width"},
-        {"density", "0.5", "0..1 coverage"}, {"layers", "4", "orientation layers"}, {"seed", "0", "seed"}},
+      {"scratches", "generator", "Straight, thin scratches of random length and orientation (optionally biased along a direction).",
+       {{"scale", "6", "cells per object size (more, smaller scratches)"}, {"length", "1", "scratch length in cells"},
+        {"width", "0.5", "0..1 line width"}, {"density", "0.5", "0..1 chance of a scratch per slot"},
+        {"layers", "3", "scratch slots per cell"}, {"direction", "", "optional bias, e.g. \"right\" for directional sanding marks"}, {"seed", "0", "seed"}},
        f_scratches},
       {"streaks", "generator", "Vertical streaks/drips on non-horizontal faces (rust runs, water stains).",
        {{"direction", "\"down\"", "flow direction"}, {"scale", "8", "streak frequency"}, {"length", "8", "elongation"},

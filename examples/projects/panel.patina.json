@@ -1,0 +1,29 @@
+{
+  "patina": 1,
+  "name": "scifi_panel",
+  "mesh": "../assets/panel.glb",
+  "resolution": 2048,
+  "height_depth": 0.004,
+  "export": {"preset": "unreal", "dir": "../../work/textures_panel"},
+  "texture_sets": {
+    "Panel": {
+      "layers": [
+        {"id": "base", "type": "smart", "material": "painted_metal",
+         "params": {"color": "#56616b", "wear": 0.45, "dirt": 0.5, "metal": "#a3a6a8"}},
+        {"id": "hazard", "channels": {
+            "basecolor": {"type": "image", "path": "../images/hazard_stripes.png", "projection": "planar", "axis": "up", "scale": 6},
+            "roughness": 0.5, "metallic": 0},
+         "mask": [{"type": "box", "min": [0.0, 0.0, 0.86], "max": [1.0, 1.0, 1.0], "falloff": 0.004},
+                  {"type": "edge_wear", "amount": 0.55, "invert": true, "blend": "multiply", "seed": 4}]},
+        {"id": "stencil", "type": "decal", "image": "../images/stencil_p47.png",
+         "position": [0.3, 1.0, 0.3], "facing": "up", "up": "back", "size": 0.34, "opacity": 0.9,
+         "channels": {"roughness": 0.6},
+         "mask": [{"type": "grunge", "style": "smudge", "amount": 0.75, "scale": 4}]},
+        {"id": "scratches", "type": "smart", "material": "scratches_overlay", "params": {"amount": 0.35}},
+        {"id": "grime", "type": "smart", "material": "grime_streaks", "params": {"amount": 0.3}},
+        {"id": "status_light", "channels": {"basecolor": "#1b1b1b", "emissive": {"color": "#27e36b", "intensity": 3}, "roughness": 0.2},
+         "mask": [{"type": "sphere", "center": [0.82, 1.0, 0.18], "radius": 0.035, "falloff": 0.15}]}
+      ]
+    }
+  }
+}

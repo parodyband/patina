@@ -261,6 +261,45 @@ static void denoise(SampleSet& ss, std::vector<float>& v) {
 }
 
 // ---------------------------------------------------------------- AO & thickness
+// Evaluates a smooth, expensive per-sample quantity on a 2x2-subsampled texel lattice, then fills the
+// remaining samples by bilinear interpolation from lattice neighbors that are close in 3D and share
+// the normal; anything else (creases, island borders, thin features) is computed exactly. ~3.5x fewer rays.
+template <class F>
+static void eval_subsampled(const SampleSet& ss, std::vector<float>& out, F&& compute) {
+  int res = ss.res;
+  size_t n = ss.size();
+  out.assign(n, 0.f);
+  std::vector<uint8_t> is_prim(n, 0);
+  for (size_t i = 0; i < n; i++) {
+    int t = ss.texel[i];
+    is_prim[i] = ((t % res) % 2 == 0) && ((t / res) % 2 == 0);
+  }
+  parallel_for((int64_t)n, 64, [&](int64_t b, int64_t e) {
+    for (int64_t i = b; i < e; i++) if (is_prim[i]) out[i] = compute((size_t)i);
+  });
+  parallel_for((int64_t)n, 64, [&](int64_t b, int64_t e) {
+    for (int64_t i = b; i < e; i++) {
+      if (is_prim[i]) continue;
+      int t = ss.texel[i], x = t % res, y = t / res;
+      int x0 = x & ~1, y0 = y & ~1;
+      float fx = (x - x0) * 0.5f, fy = (y - y0) * 0.5f;
+      float lim = 3.f * std::fmax(ss.len_u[i], ss.len_v[i]);
+      float acc = 0, wsum = 0;
+      for (int k = 0; k < 4; k++) {
+        int cx = x0 + (k & 1) * 2, cy = y0 + (k >> 1) * 2;
+        float w = ((k & 1) ? fx : 1.f - fx) * ((k >> 1) ? fy : 1.f - fy);
+        if (w <= 0 || cx >= res || cy >= res) continue;
+        int32_t s = ss.pad[(size_t)cy * res + cx];
+        if (s < 0 || ss.texel[s] != cy * res + cx || !is_prim[s]) continue;
+        if (length2(ss.pos[s] - ss.pos[i]) > lim * lim || dot(ss.nrm[s], ss.nrm[i]) < 0.97f) continue;
+        acc += out[s] * w;
+        wsum += w;
+      }
+      out[i] = wsum > 0.6f ? acc / wsum : compute((size_t)i);
+    }
+  });
+}
+
 static inline float radical_inverse(uint32_t b) {
   b = (b << 16u) | (b >> 16u);
   b = ((b & 0x55555555u) << 1u) | ((b & 0xAAAAAAAAu) >> 1u);
@@ -275,9 +314,8 @@ static void bake_ao(const Mesh& m, const BVH& bvh, SampleSet& ss, const BakeSett
   float maxd = s.ao_distance * ext;
   float eps = ext * 2e-5f;
   int N = s.ao_samples;
-  ss.ao.assign(ss.size(), 1.f);
-  parallel_for((int64_t)ss.size(), 64, [&](int64_t b, int64_t e) {
-    for (int64_t i = b; i < e; i++) {
+  eval_subsampled(ss, ss.ao, [&](size_t i) -> float {
+    {
       vec3 n = ss.nrm[i], fn = ss.fnrm[i];
       vec3 o = ss.pos[i] + fn * eps + n * eps;
       vec3 t, bt;
@@ -294,7 +332,7 @@ static void bake_ao(const Mesh& m, const BVH& bvh, SampleSet& ss, const BakeSett
         valid++;
         if (bvh.occluded(o, d, 0.f, maxd)) hits++;
       }
-      ss.ao[i] = valid ? 1.f - (float)hits / valid : 1.f;
+      return valid ? 1.f - (float)hits / valid : 1.f;
     }
   });
   denoise(ss, ss.ao);
@@ -305,9 +343,8 @@ static void bake_thickness(const Mesh& m, const BVH& bvh, SampleSet& ss, const B
   float maxd = s.thickness_distance * ext;
   float eps = ext * 2e-5f;
   int N = s.thickness_samples;
-  ss.thickness.assign(ss.size(), 1.f);
-  parallel_for((int64_t)ss.size(), 64, [&](int64_t b, int64_t e) {
-    for (int64_t i = b; i < e; i++) {
+  eval_subsampled(ss, ss.thickness, [&](size_t i) -> float {
+    {
       vec3 n = -ss.nrm[i], fn = -ss.fnrm[i];
       vec3 o = ss.pos[i] + fn * eps;
       vec3 t, bt;
@@ -327,7 +364,7 @@ static void bake_thickness(const Mesh& m, const BVH& bvh, SampleSet& ss, const B
         valid++;
         sum += bvh.intersect(o, d, 0.f, maxd, th, tri, uu, vv) ? th : maxd;
       }
-      ss.thickness[i] = valid ? saturate(sum / (valid * maxd)) : 1.f;
+      return valid ? saturate(sum / (valid * maxd)) : 1.f;
     }
   });
   denoise(ss, ss.thickness);

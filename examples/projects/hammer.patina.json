@@ -1,0 +1,27 @@
+{
+  "patina": 1,
+  "name": "hammer",
+  "mesh": "../assets/hammer.glb",
+  "resolution": 2048,
+  "export": {"preset": "gltf", "dir": "../../work/textures_hammer"},
+  "texture_sets": {
+    "Wood": {
+      "layers": [
+        {"id": "wood", "type": "smart", "material": "wood", "params": {"stretch": [1, 12, 1]}},
+        {"id": "grip_wear", "channels": {"basecolor": "#3a2616", "roughness": 0.35},
+         "opacity": 0.7, "mask": [{"type": "gradient", "axis": "up", "from": 0.45, "to": 0.05, "breakup": 0.3}]},
+        {"id": "grime", "type": "smart", "material": "dirt_overlay", "params": {"amount": 0.35}}
+      ]
+    },
+    "Steel": {
+      "layers": [
+        {"id": "steel", "type": "smart", "material": "iron"},
+        {"id": "strike_face", "channels": {"basecolor": "#d9dadb", "roughness": 0.18},
+         "mask": [{"type": "direction", "direction": "left", "min": 0.6, "max": 0.9},
+                  {"type": "scratches", "density": 0.8, "blend": "max", "opacity": 0.5}]},
+        {"id": "rust", "type": "smart", "material": "rust_overlay", "params": {"amount": 0.5}},
+        {"id": "edges", "type": "smart", "material": "edge_highlight", "params": {"amount": 0.5}}
+      ]
+    }
+  }
+}
