@@ -15,7 +15,8 @@ Options (after `--`):
 
 Assets (all +Y up in glTF, modifiers applied, split/custom normals, TEXCOORD_0, materials):
     crate.glb    beveled paneled box, convex + concave edges       material: Crate
-    barrel.glb   stylized coopered barrel: 14 staves, board heads, hoops  materials: Staves, Heads, Hoops
+    barrel.glb   stylized coopered barrel: 14 staves, board heads, riveted hoops  materials: Staves, Heads, Hoops, Rivets
+    beer_barrel.glb  the barrel on its side in a wooden cradle with a brass tap   + materials: Tap, Stand
     hammer.glb   two objects: Handle + Head                         materials: Wood, Steel
     suzanne.glb  Suzanne, subdivision level 2 applied, smooth       material: Skin
     panel.glb    sci-fi panel with recessed grooves + bolts         material: Panel
@@ -48,9 +49,9 @@ import traceback
 
 import bpy
 import bmesh
-from mathutils import Matrix
+from mathutils import Matrix, Vector
 
-ASSET_NAMES = ("crate", "barrel", "hammer", "suzanne", "panel", "boltplate_low", "boltplate_high", "boltplate_cage")
+ASSET_NAMES = ("crate", "barrel", "beer_barrel", "hammer", "suzanne", "panel", "boltplate_low", "boltplate_high", "boltplate_cage")
 
 UV_ANGLES = (66.0, 55.0, 45.0, 35.0)   # smart-project angle limits tried in order
 UV_ISLAND_MARGIN = 0.02                # smart project margin
@@ -468,6 +469,7 @@ def build_barrel():
     H, R_END, R_BILGE = 0.85, 0.25, 0.33
     N, T, GAP = 14, 0.034, 0.003                      # staves, thickness, joint gap
     CHIME, HEAD_T, CROZE = 0.045, 0.03, 0.006         # stave ends above the heads, head thickness
+    RIVETS = 6                                        # per hoop
     ROWS = 24
 
     def r_at(z):
@@ -586,12 +588,21 @@ def build_barrel():
 
     # ---- hoops: thick iron bands standing proud of the staves (two at the chimes, two quarter hoops)
     bm = bmesh.new()
+    rbm = bmesh.new()                                 # rivets: their own part and texture set
     HT, EPS = 0.009, 0.0015
     for z0, z1 in ((0.05, 0.11), (0.23, 0.28), (H - 0.28, H - 0.23), (H - 0.11, H - 0.05)):
         zz = [z0 + (z1 - z0) * k / 4 for k in range(5)]
         prof = [(r_at(z) + EPS + HT, z, 0) for z in zz] + [(r_at(z) + EPS, z, 0) for z in reversed(zz)]
         prof.append(prof[0])                          # close the band's cross-section
         revolve(bm, prof, 96, u_splits=4)
+        # chunky domed rivets around the band, each sitting on the band's outer surface
+        zc = (z0 + z1) / 2
+        slope = (r_at(zc + 1e-3) - r_at(zc - 1e-3)) / 2e-3
+        for k in range(RIVETS):
+            a = 2 * math.pi * (k + 0.5 * (int(z0 * 100) % 2)) / RIVETS
+            n = Vector((math.cos(a), math.sin(a), -slope)).normalized()
+            c = Vector((math.cos(a) * (r_at(zc) + EPS + HT), math.sin(a) * (r_at(zc) + EPS + HT), zc))
+            _rivet(rbm, c, n, 0.016, 0.011)
     hoops = object_from_bmesh("Hoops", bm, [hoops_m])
     hoops["patina_analytic_uv"] = True
     bpy.context.view_layer.objects.active = hoops
@@ -604,7 +615,10 @@ def build_barrel():
     smooth_by_angle(hoops, 30.0)
     add_bevel(hoops, width=0.003, segments=3)         # rounded band edges
     apply_modifiers(hoops)
-    return [staves, heads, hoops]
+    rivets = object_from_bmesh("Rivets", rbm, [make_material("Rivets", (0.3, 0.3, 0.31), 1.0, 0.45)])
+    rivets["patina_analytic_uv"] = True
+    smooth_by_angle(rivets, 40.0)
+    return [staves, heads, hoops, rivets]
 
 
 def _box_bm(sx, sy, sz, cx=0.0, cy=0.0, cz=0.0):
@@ -682,6 +696,105 @@ def build_boltplate_high():
         apply_modifiers(o)
         o["patina_skip_uv"] = True                  # high polys are never textured
     return [plate, bar]
+
+
+def _rivet(bm, center, normal, r, h, seg=10, rings=4):
+    """Domed rivet head on a surface (sunk 1 mm so it never floats), planar UVs in world units."""
+    uvl = bm.loops.layers.uv.get("UVMap") or bm.loops.layers.uv.new("UVMap")
+    t = normal.orthogonal().normalized()
+    b = normal.cross(t)
+    ringv = []
+    for k in range(rings):
+        a = (k / rings) * (math.pi / 2)
+        rr, hh = r * math.cos(a), h * math.sin(a) - 0.001
+        ringv.append([bm.verts.new(center + (t * math.cos(2 * math.pi * j / seg) + b * math.sin(2 * math.pi * j / seg)) * rr + normal * hh)
+                      for j in range(seg)])
+    top = bm.verts.new(center + normal * (h - 0.001))
+    faces = []
+    for k in range(rings - 1):
+        for j in range(seg):
+            jn = (j + 1) % seg
+            faces.append(bm.faces.new((ringv[k][j], ringv[k][jn], ringv[k + 1][jn], ringv[k + 1][j])))
+    for j in range(seg):
+        faces.append(bm.faces.new((ringv[-1][j], ringv[-1][(j + 1) % seg], top)))
+    for f in faces:
+        for loop in f.loops:
+            d = loop.vert.co - center
+            loop[uvl].uv = (d.dot(t), d.dot(b))
+
+
+def _cyl(bm, p0, p1, r, seg=12):
+    """Capped cylinder from p0 to p1."""
+    p0, p1 = Vector(p0), Vector(p1)
+    d = p1 - p0
+    m = Matrix.Translation((p0 + p1) / 2) @ Vector((0, 0, 1)).rotation_difference(d.normalized()).to_matrix().to_4x4()
+    bmesh.ops.create_cone(bm, cap_ends=True, cap_tris=False, segments=seg, radius1=r, radius2=r, depth=d.length, matrix=m)
+
+
+def build_beer_barrel():
+    """Beer barrel on its side in a wooden cradle, with a brass tap in the front head.
+    materials: Staves, Heads, Hoops, Rivets, Tap, Stand."""
+    staves, heads, hoops, rivets = build_barrel()
+    H = max(v.co.z for v in staves.data.vertices)
+    head_z = max(v.co.z for v in heads.data.vertices)   # outer face of the top head
+    LIFT = 0.40                                          # barrel axis height
+    # the tap, built in the upright barrel's frame (+Z out of the top head, -Y becomes "down")
+    bm = bmesh.new()
+    ty = -0.12
+    _cyl(bm, (0, ty, head_z - 0.005), (0, ty, head_z + 0.012), 0.036, 12)        # flange
+    _cyl(bm, (0, ty, head_z), (0, ty, H + 0.06), 0.02, 12)                       # shank
+    _cyl(bm, (0, ty, H + 0.03), (0, ty, H + 0.085), 0.032, 10)                    # body
+    _cyl(bm, (0, ty - 0.01, H + 0.058), (0, ty - 0.085, H + 0.058), 0.016, 10)    # spout (down)
+    _cyl(bm, (0, ty + 0.01, H + 0.058), (0, ty + 0.1, H + 0.058), 0.011, 8)       # lever (up)
+    bmesh.ops.create_uvsphere(bm, u_segments=12, v_segments=8, radius=0.022,
+                              matrix=Matrix.Translation((0, ty + 0.11, H + 0.058)))  # knob
+    tap = object_from_bmesh("Tap", bm, [make_material("Tap", (0.8, 0.6, 0.3), 1.0, 0.35)])
+    add_bevel(tap, width=0.0025, segments=2)
+    apply_modifiers(tap)
+    # lay everything on its side: +Z -> -Y (front), +Y -> +Z; centre the barrel over the cradle
+    rot = Matrix.Rotation(math.pi / 2, 4, "X")
+    move = Matrix.Translation((0, H / 2, LIFT))
+    for o in (staves, heads, hoops, rivets, tap):
+        o.data.transform(move @ rot)
+        o.data.update()
+    # the holder: two saddles cut to the barrel's curve, joined by two rails
+    bm = bmesh.new()
+    W, T_S = 0.37, 0.07
+    stave_r = {}
+    for v in staves.data.vertices:  # measured barrel radius near each saddle
+        key = round(v.co.y, 2)
+        stave_r[key] = max(stave_r.get(key, 0.0), math.hypot(v.co.x, v.co.z - LIFT))
+    for yc in (-(H / 2 - 0.17), H / 2 - 0.17):
+        near = [rv for yk, rv in stave_r.items() if abs(yk - yc) < 0.04]
+        r = (max(near) if near else 0.31) + 0.004
+        z_top = LIFT - 0.12
+        xa = math.sqrt(max(r * r - (LIFT - z_top) ** 2, 0.0))
+        outline = [(-W, 0.0), (-0.2, 0.0), (-0.15, 0.06), (0.15, 0.06), (0.2, 0.0), (W, 0.0), (W, z_top), (xa, z_top)]
+        a0 = math.atan2(z_top - LIFT, xa)          # right end of the notch (lower right quadrant)
+        a1 = math.atan2(z_top - LIFT, -xa)         # left end (lower left quadrant)
+        for k in range(1, 16):                     # arc through the bottom of the notch
+            a = a0 + ((a1 - a0) % (-2 * math.pi)) * k / 16
+            outline.append((r * math.cos(a), LIFT + r * math.sin(a)))
+        outline += [(-xa, z_top), (-W, z_top)]
+        front = [bm.verts.new((x, yc - T_S / 2, z)) for x, z in outline]
+        back = [bm.verts.new((x, yc + T_S / 2, z)) for x, z in outline]
+        bm.faces.new(front[::-1])
+        bm.faces.new(back)
+        n = len(outline)
+        for k in range(n):
+            j = (k + 1) % n
+            bm.faces.new((front[k], front[j], back[j], back[k]))
+    for x in (-0.29, 0.29):
+        tmp = _box_bm(0.07, H * 0.95, 0.06, cx=x, cz=0.03)
+        me = bpy.data.meshes.new("_rail")
+        tmp.to_mesh(me)
+        tmp.free()
+        bm.from_mesh(me)
+        bpy.data.meshes.remove(me)
+    stand = object_from_bmesh("Stand", bm, [make_material("Stand", (0.35, 0.22, 0.12), 0.0, 0.7)])
+    add_bevel(stand, width=0.008, segments=3)
+    apply_modifiers(stand)
+    return [staves, heads, hoops, rivets, tap, stand]
 
 
 def build_hammer():
@@ -784,7 +897,7 @@ def build_panel():
     return [obj]
 
 
-BUILDERS = {"crate": build_crate, "barrel": build_barrel, "hammer": build_hammer,
+BUILDERS = {"crate": build_crate, "barrel": build_barrel, "beer_barrel": build_beer_barrel, "hammer": build_hammer,
             "boltplate_low": build_boltplate_low, "boltplate_high": build_boltplate_high,
             "boltplate_cage": build_boltplate_cage,
             "suzanne": build_suzanne, "panel": build_panel}

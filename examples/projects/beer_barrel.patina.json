@@ -1,7 +1,7 @@
 {
  "patina": 1,
- "name": "barrel",
- "mesh": "../assets/barrel.glb",
+ "name": "beer_barrel",
+ "mesh": "../assets/beer_barrel.glb",
  "resolution": 2048,
  "bake": {
   "curvature_radius": 0.011,
@@ -9,7 +9,7 @@
  },
  "export": {
   "preset": "gltf",
-  "dir": "../../work/textures_barrel"
+  "dir": "../../work/textures_beer_barrel"
  },
  "texture_sets": {
   "Staves": {
@@ -86,7 +86,7 @@
       {
        "type": "gradient",
        "axis": "up",
-       "from": 0.35,
+       "from": 0.55,
        "to": 1.0,
        "breakup": 0.25,
        "scale": 5
@@ -191,13 +191,13 @@
        "type": "box",
        "min": [
         0,
-        0.03,
-        0
+        0,
+        0.03
        ],
        "max": [
         1,
-        0.15,
-        1
+        1,
+        0.15
        ],
        "falloff": 0.02
       },
@@ -205,13 +205,13 @@
        "type": "box",
        "min": [
         0,
-        0.25,
-        0
+        0,
+        0.23
        ],
        "max": [
         1,
-        0.35,
-        1
+        1,
+        0.33
        ],
        "falloff": 0.02,
        "blend": "max"
@@ -220,13 +220,13 @@
        "type": "box",
        "min": [
         0,
-        0.65,
-        0
+        0,
+        0.59
        ],
        "max": [
         1,
-        0.75,
-        1
+        1,
+        0.69
        ],
        "falloff": 0.02,
        "blend": "max"
@@ -235,13 +235,13 @@
        "type": "box",
        "min": [
         0,
-        0.85,
-        0
+        0,
+        0.77
        ],
        "max": [
         1,
-        0.96,
-        1
+        1,
+        0.88
        ],
        "falloff": 0.02,
        "blend": "max"
@@ -270,8 +270,8 @@
       {
        "type": "gradient",
        "axis": "up",
-       "from": 0.13,
-       "to": 0.02,
+       "from": 0.32,
+       "to": 0.12,
        "breakup": 0.6,
        "scale": 7,
        "seed": 2
@@ -285,6 +285,51 @@
         "value": 0.3,
         "softness": 0.05
        },
+       "blend": "multiply"
+      }
+     ]
+    },
+    {
+     "id": "stave_beer_wet",
+     "channels": {
+      "basecolor": "#2a1407",
+      "roughness": 0.12
+     },
+     "mask": [
+      {
+       "type": "box",
+       "min": [
+        0.4,
+        0.05,
+        0.8
+       ],
+       "max": [
+        0.6,
+        0.3,
+        1
+       ],
+       "falloff": 0.03
+      },
+      {
+       "type": "streaks",
+       "amount": 1.0,
+       "seed": 3,
+       "blend": "max",
+       "opacity": 0.9
+      },
+      {
+       "type": "box",
+       "min": [
+        0.36,
+        0.0,
+        0.8
+       ],
+       "max": [
+        0.64,
+        0.3,
+        1
+       ],
+       "falloff": 0.02,
        "blend": "multiply"
       }
      ]
@@ -428,6 +473,174 @@
        "seed": 10
       }
      ]
+    },
+    {
+     "id": "beer_wet",
+     "channels": {
+      "basecolor": "#2a1407",
+      "roughness": 0.12
+     },
+     "mask": [
+      {
+       "type": "box",
+       "min": [
+        0.4,
+        0.12,
+        0.8
+       ],
+       "max": [
+        0.6,
+        0.34,
+        1
+       ],
+       "falloff": 0.03
+      },
+      {
+       "type": "streaks",
+       "amount": 1.0,
+       "seed": 3,
+       "blend": "max",
+       "opacity": 0.9
+      },
+      {
+       "type": "box",
+       "min": [
+        0.36,
+        0.0,
+        0.8
+       ],
+       "max": [
+        0.64,
+        0.34,
+        1
+       ],
+       "falloff": 0.02,
+       "blend": "multiply"
+      }
+     ]
+    },
+    {
+     "id": "brand_xxx",
+     "opacity": 0.9,
+     "channels": {
+      "basecolor": "#1e0e05",
+      "roughness": 0.85,
+      "height": -0.3
+     },
+     "mask": [
+      {
+       "type": "paint",
+       "strokes": [
+        {
+         "points": [
+          [
+           0.365,
+           0.7200000000000001,
+           0.86
+          ],
+          [
+           0.43500000000000005,
+           0.64,
+           0.86
+          ]
+         ],
+         "radius": 0.009,
+         "hardness": 0.75
+        },
+        {
+         "points": [
+          [
+           0.365,
+           0.64,
+           0.86
+          ],
+          [
+           0.43500000000000005,
+           0.7200000000000001,
+           0.86
+          ]
+         ],
+         "radius": 0.009,
+         "hardness": 0.75
+        },
+        {
+         "points": [
+          [
+           0.46499999999999997,
+           0.7200000000000001,
+           0.86
+          ],
+          [
+           0.535,
+           0.64,
+           0.86
+          ]
+         ],
+         "radius": 0.009,
+         "hardness": 0.75
+        },
+        {
+         "points": [
+          [
+           0.46499999999999997,
+           0.64,
+           0.86
+          ],
+          [
+           0.535,
+           0.7200000000000001,
+           0.86
+          ]
+         ],
+         "radius": 0.009,
+         "hardness": 0.75
+        },
+        {
+         "points": [
+          [
+           0.565,
+           0.7200000000000001,
+           0.86
+          ],
+          [
+           0.635,
+           0.64,
+           0.86
+          ]
+         ],
+         "radius": 0.009,
+         "hardness": 0.75
+        },
+        {
+         "points": [
+          [
+           0.565,
+           0.64,
+           0.86
+          ],
+          [
+           0.635,
+           0.7200000000000001,
+           0.86
+          ]
+         ],
+         "radius": 0.009,
+         "hardness": 0.75
+        }
+       ]
+      },
+      {
+       "type": "noise",
+       "noise": "fbm",
+       "scale": 60,
+       "seed": 4,
+       "range": [
+        0.5,
+        1.4
+       ],
+       "blend": "multiply"
+      }
+     ]
     }
    ]
   },
@@ -530,7 +743,7 @@
   "Rivets": {
    "layers": [
     {
-     "id": "rivet_iron",
+     "id": "beer_rivet_iron",
      "channels": {
       "basecolor": {
        "type": "noise",
@@ -556,7 +769,7 @@
      }
     },
     {
-     "id": "rivet_shine",
+     "id": "beer_rivet_shine",
      "channels": {
       "basecolor": "#d9d3c7",
       "metallic": 1,
@@ -578,7 +791,7 @@
      ]
     },
     {
-     "id": "rivet_rust_ring",
+     "id": "beer_rivet_rust_ring",
      "channels": {
       "basecolor": "#5a2a12",
       "metallic": 0,
@@ -602,6 +815,327 @@
         "softness": 0.05
        },
        "blend": "multiply"
+      }
+     ]
+    }
+   ]
+  },
+  "Tap": {
+   "layers": [
+    {
+     "id": "brass",
+     "channels": {
+      "basecolor": {
+       "type": "noise",
+       "noise": "fbm",
+       "scale": 30,
+       "seed": 1,
+       "gradient": [
+        "#7e5b22",
+        "#a8833c",
+        "#c29a4c"
+       ]
+      },
+      "metallic": 1,
+      "roughness": {
+       "type": "noise",
+       "noise": "fbm",
+       "scale": 40,
+       "seed": 2,
+       "range": [
+        0.3,
+        0.55
+       ]
+      }
+     }
+    },
+    {
+     "id": "brass_dark",
+     "channels": {
+      "basecolor": "#4a3514",
+      "roughness": 0.6
+     },
+     "mask": [
+      {
+       "type": "cavity",
+       "levels": [
+        0.1,
+        0.5
+       ]
+      },
+      {
+       "type": "curvature",
+       "mode": "concave",
+       "levels": [
+        0.02,
+        0.3
+       ],
+       "blend": "max"
+      }
+     ]
+    },
+    {
+     "id": "brass_grime",
+     "blend": "multiply",
+     "opacity": 0.6,
+     "channels": {
+      "basecolor": "#6b5638",
+      "roughness": 0.7
+     },
+     "mask": [
+      {
+       "type": "noise",
+       "noise": "fbm",
+       "scale": 12,
+       "seed": 9,
+       "range": [
+        -0.2,
+        1.2
+       ]
+      }
+     ]
+    },
+    {
+     "id": "verdigris",
+     "channels": {
+      "basecolor": "#5f9a86",
+      "metallic": 0,
+      "roughness": 0.8
+     },
+     "mask": [
+      {
+       "type": "cavity",
+       "levels": [
+        0.25,
+        0.7
+       ]
+      },
+      {
+       "type": "noise",
+       "noise": "voronoi",
+       "scale": 50,
+       "seed": 3,
+       "threshold": {
+        "value": 0.45,
+        "softness": 0.05
+       },
+       "blend": "multiply"
+      }
+     ]
+    },
+    {
+     "id": "brass_edges",
+     "channels": {
+      "basecolor": "#e8c77e",
+      "roughness": 0.18
+     },
+     "mask": [
+      {
+       "type": "curvature",
+       "mode": "convex",
+       "levels": [
+        0.18,
+        0.55
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  "Stand": {
+   "layers": [
+    {
+     "id": "stand_wood",
+     "type": "smart",
+     "material": "wood",
+     "params": {
+      "space": "uv",
+      "rings": 14,
+      "light": "#8a5227",
+      "dark": "#3f200d",
+      "roughness": 0.7,
+      "seed": 5
+     }
+    },
+    {
+     "id": "stand_tone",
+     "blend": "multiply",
+     "opacity": 0.7,
+     "channels": {
+      "basecolor": {
+       "type": "island_random",
+       "seed": 41,
+       "gradient": [
+        "#8a6a52",
+        "#e0c8b0",
+        "#ffffff"
+       ]
+      }
+     }
+    },
+    {
+     "id": "stand_cavity",
+     "blend": "multiply",
+     "opacity": 0.85,
+     "channels": {
+      "basecolor": "#2a1408",
+      "roughness": 0.85
+     },
+     "mask": [
+      {
+       "type": "cavity",
+       "levels": [
+        0.1,
+        0.5
+       ]
+      },
+      {
+       "type": "curvature",
+       "mode": "concave",
+       "levels": [
+        0.02,
+        0.35
+       ],
+       "blend": "max"
+      }
+     ]
+    },
+    {
+     "id": "stand_edges",
+     "channels": {
+      "basecolor": "#c07c42",
+      "roughness": 0.55
+     },
+     "mask": [
+      {
+       "type": "curvature",
+       "mode": "convex",
+       "levels": [
+        0.14,
+        0.5
+       ]
+      },
+      {
+       "type": "noise",
+       "noise": "voronoi",
+       "scale": 40,
+       "seed": 7,
+       "threshold": {
+        "value": 0.25,
+        "softness": 0.05
+       },
+       "blend": "multiply"
+      },
+      {
+       "type": "noise",
+       "noise": "fbm",
+       "scale": 8,
+       "seed": 17,
+       "range": [
+        0.25,
+        1.5
+       ],
+       "blend": "multiply"
+      }
+     ]
+    },
+    {
+     "id": "stand_chips",
+     "channels": {
+      "basecolor": "#b3743f",
+      "roughness": 0.72,
+      "height": -0.25
+     },
+     "mask": [
+      {
+       "type": "edge_wear",
+       "amount": 0.35,
+       "width": 0.35,
+       "breakup": 0.9,
+       "scale": 30,
+       "noise": "cells",
+       "softness": 0.02,
+       "seed": 19
+      }
+     ]
+    },
+    {
+     "id": "spill",
+     "channels": {
+      "basecolor": "#1f0f06",
+      "roughness": 0.12
+     },
+     "mask": [
+      {
+       "type": "box",
+       "min": [
+        0.36,
+        0.0,
+        0.74
+       ],
+       "max": [
+        0.64,
+        0.4,
+        0.95
+       ],
+       "falloff": 0.04
+      },
+      {
+       "type": "direction",
+       "direction": "front",
+       "min": 0.3,
+       "max": 0.8,
+       "blend": "multiply"
+      },
+      {
+       "type": "gradient",
+       "axis": "up",
+       "from": 0.02,
+       "to": 0.14,
+       "breakup": 0.6,
+       "scale": 30,
+       "seed": 3,
+       "blend": "multiply"
+      },
+      {
+       "type": "streaks",
+       "amount": 1.0,
+       "seed": 8,
+       "blend": "max",
+       "opacity": 0.5
+      },
+      {
+       "type": "box",
+       "min": [
+        0.36,
+        0.0,
+        0.74
+       ],
+       "max": [
+        0.64,
+        0.4,
+        0.95
+       ],
+       "falloff": 0.04,
+       "blend": "multiply"
+      }
+     ]
+    },
+    {
+     "id": "floor_dirt",
+     "opacity": 0.8,
+     "channels": {
+      "basecolor": "#33271c",
+      "roughness": 0.9
+     },
+     "mask": [
+      {
+       "type": "gradient",
+       "axis": "up",
+       "from": 0.12,
+       "to": 0.0,
+       "breakup": 0.5,
+       "scale": 8
       }
      ]
     }

@@ -38,6 +38,12 @@ Substance Painter is built for people with a mouse. Agents need:
 hoops with rust), lit by the built-in studio HDRI. Middle: Patina's
 export rendered in Blender Cycles through the bridge. Right: `mode=mask:<layer>` shows exactly where a layer applies.*
 
+![stylized beer barrel on a cradle with a brass tap](docs/images/beer_barrel.png)
+
+*The same barrel as a stylized beer barrel: six texture sets (staves, heads, hoops, rivets, brass tap, cradle),
+painted edges from curvature, a burned "XXX" brand painted with 3D strokes, and wet wood under the tap
+([project](examples/projects/beer_barrel.patina.json)).*
+
 ![16 smart materials rendered by one variants call](docs/images/gallery.png)
 
 *One `variants` call renders 16 smart materials side by side, evaluated in parallel in 0.7 s.*

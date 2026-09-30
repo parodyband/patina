@@ -17,11 +17,11 @@ echo "== patina tests ($BIN)"
 "$BIN" version >/dev/null && ok "version"
 
 # inspect every example asset
-for a in crate barrel hammer suzanne panel; do
+for a in crate barrel beer_barrel hammer suzanne panel; do
   tris=$("$BIN" inspect "examples/assets/$a.glb" --compact | json "d['triangles']")
   [ "$tris" -gt 0 ] || fail "inspect $a"
 done
-ok "inspect 5 assets"
+ok "inspect 6 assets"
 
 # new + edit + validate
 "$BIN" new "$W/crate.patina.json" --mesh examples/assets/crate.glb --resolution 512 --smart painted_metal --compact >/dev/null || fail "new"
@@ -111,6 +111,8 @@ ok "explicit cage mesh, painted cage mask, AO from the high poly"
 
 # example project: UV-space wood grain, mask range, all three lighting environments
 [ "$("$BIN" validate examples/projects/barrel.patina.json --compact | json "d['ok']")" = "True" ] || fail "validate barrel example"
+[ "$("$BIN" validate examples/projects/beer_barrel.patina.json --compact | json "d['ok']")" = "True" ] || fail "validate beer barrel example"
+"$BIN" render examples/projects/beer_barrel.patina.json --views iso --size 128 --resolution 256 --out "$W/beer.png" --compact >/dev/null || fail "render beer barrel"
 for env in studio procedural third_party/hdri/studio_small_09_1k.hdr; do
   "$BIN" render examples/projects/barrel.patina.json --views iso --size 128 --resolution 256 --environment "$env"     --out "$W/barrel_env.png" --compact >/dev/null || fail "render environment $env"
 done
