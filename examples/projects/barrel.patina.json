@@ -1,44 +1,531 @@
 {
-  "patina": 1,
-  "name": "barrel",
-  "mesh": "../assets/barrel.glb",
-  "resolution": 2048,
-  "bake": {"curvature_radius": 0.004},
-  "export": {"preset": "gltf", "dir": "../../work/textures_barrel"},
-  "texture_sets": {
-    "Staves": {
-      "layers": [
-        {"id": "oak", "type": "smart", "material": "wood",
-         "params": {"space": "uv", "rings": 40, "light": "#9c6c40", "dark": "#52321b", "roughness": 0.62, "seed": 3}},
-        {"id": "weathered", "opacity": 0.4, "channels": {"basecolor": "#6f604f", "roughness": 0.75},
-         "mask": [{"type": "noise", "noise": "fbm", "scale": 5, "seed": 8, "range": [-0.3, 1.2]}]},
-        {"id": "iron_stain", "opacity": 0.75, "channels": {"basecolor": "#2e2118", "roughness": 0.78},
-         "mask": [{"type": "box", "min": [0, 0.03, 0], "max": [1, 0.15, 1], "falloff": 0.03},
-                  {"type": "box", "min": [0, 0.25, 0], "max": [1, 0.35, 1], "falloff": 0.03, "blend": "max"},
-                  {"type": "box", "min": [0, 0.65, 0], "max": [1, 0.75, 1], "falloff": 0.03, "blend": "max"},
-                  {"type": "box", "min": [0, 0.85, 0], "max": [1, 0.96, 1], "falloff": 0.03, "blend": "max"},
-                  {"type": "noise", "noise": "fbm", "scale": 14, "range": [0.2, 1], "blend": "multiply"}]},
-        {"id": "rust_runs", "opacity": 0.5, "channels": {"basecolor": "#4a2a17", "roughness": 0.8},
-         "mask": [{"type": "streaks", "amount": 0.35, "seed": 5}]},
-        {"id": "joints", "type": "smart", "material": "dirt_overlay", "params": {"amount": 0.5, "seed": 2}},
-        {"id": "worn_chamfers", "type": "smart", "material": "edge_highlight", "params": {"amount": 0.35}},
-        {"id": "mud", "opacity": 0.85, "channels": {"basecolor": "#3a3025", "roughness": 0.92},
-         "mask": [{"type": "gradient", "axis": "up", "from": 0.14, "to": 0.0, "breakup": 0.45, "scale": 9}]}
-      ]
+ "patina": 1,
+ "name": "barrel",
+ "mesh": "../assets/barrel.glb",
+ "resolution": 2048,
+ "bake": {
+  "curvature_radius": 0.011,
+  "curvature_gain": 1.6
+ },
+ "export": {
+  "preset": "gltf",
+  "dir": "../../work/textures_barrel"
+ },
+ "texture_sets": {
+  "Staves": {
+   "layers": [
+    {
+     "id": "oak",
+     "type": "smart",
+     "material": "wood",
+     "params": {
+      "space": "uv",
+      "rings": 18,
+      "light": "#a9692f",
+      "dark": "#4f2912",
+      "roughness": 0.66,
+      "seed": 3
+     }
     },
-    "Heads": {
-      "layers": [
-        {"id": "head_oak", "type": "smart", "material": "wood",
-         "params": {"space": "uv", "rings": 40, "light": "#a4744a", "dark": "#58361d", "roughness": 0.64, "seed": 11}},
-        {"id": "head_weathered", "opacity": 0.35, "channels": {"basecolor": "#76695a", "roughness": 0.78},
-         "mask": [{"type": "noise", "noise": "fbm", "scale": 4, "seed": 9, "range": [-0.2, 1.1]}]},
-        {"id": "gaps", "type": "smart", "material": "dirt_overlay", "params": {"amount": 0.6, "seed": 4}}
-      ]
+    {
+     "id": "board_tone",
+     "blend": "multiply",
+     "opacity": 0.75,
+     "channels": {
+      "basecolor": {
+       "type": "island_random",
+       "seed": 21,
+       "gradient": [
+        "#8a6446",
+        "#d6b89a",
+        "#f2e4d4"
+       ]
+      }
+     }
     },
-    "Hoops": {
-      "layers": [
-        {"id": "hoop_iron", "type": "smart", "material": "wrought_iron", "params": {"rust": 0.45, "wear": 0.5, "seed": 2}}
-      ]
+    {
+     "id": "paint_patches",
+     "blend": "multiply",
+     "opacity": 0.45,
+     "channels": {
+      "basecolor": "#8a5a3a"
+     },
+     "mask": [
+      {
+       "type": "noise",
+       "noise": "voronoi",
+       "space": "uv",
+       "scale": 9,
+       "seed": 4,
+       "threshold": {
+        "value": 0.55,
+        "softness": 0.02
+       }
+      },
+      {
+       "type": "noise",
+       "noise": "fbm",
+       "scale": 6,
+       "seed": 5,
+       "range": [
+        0.2,
+        1.4
+       ],
+       "blend": "multiply"
+      }
+     ]
+    },
+    {
+     "id": "top_light",
+     "blend": "screen",
+     "opacity": 0.2,
+     "channels": {
+      "basecolor": "#e0a86a"
+     },
+     "mask": [
+      {
+       "type": "gradient",
+       "axis": "up",
+       "from": 0.35,
+       "to": 1.0,
+       "breakup": 0.25,
+       "scale": 5
+      }
+     ]
+    },
+    {
+     "id": "cavity_dark",
+     "blend": "multiply",
+     "opacity": 0.85,
+     "channels": {
+      "basecolor": "#3a1f0e",
+      "roughness": 0.8
+     },
+     "mask": [
+      {
+       "type": "curvature",
+       "mode": "concave",
+       "levels": [
+        0.02,
+        0.35
+       ]
+      },
+      {
+       "type": "cavity",
+       "levels": [
+        0.1,
+        0.5
+       ],
+       "blend": "max"
+      }
+     ]
+    },
+    {
+     "id": "edge_paint",
+     "channels": {
+      "basecolor": "#d39556",
+      "roughness": 0.55
+     },
+     "mask": [
+      {
+       "type": "curvature",
+       "mode": "convex",
+       "levels": [
+        0.14,
+        0.5
+       ]
+      },
+      {
+       "type": "noise",
+       "noise": "voronoi",
+       "scale": 40,
+       "seed": 7,
+       "threshold": {
+        "value": 0.25,
+        "softness": 0.05
+       },
+       "blend": "multiply"
+      },
+      {
+       "type": "noise",
+       "noise": "fbm",
+       "scale": 8,
+       "seed": 17,
+       "range": [
+        0.25,
+        1.5
+       ],
+       "blend": "multiply"
+      }
+     ]
+    },
+    {
+     "id": "chips",
+     "channels": {
+      "basecolor": "#c4884e",
+      "roughness": 0.72,
+      "height": -0.25
+     },
+     "mask": [
+      {
+       "type": "edge_wear",
+       "amount": 0.32,
+       "width": 0.35,
+       "breakup": 0.9,
+       "scale": 30,
+       "noise": "cells",
+       "softness": 0.02,
+       "seed": 9
+      }
+     ]
+    },
+    {
+     "id": "iron_stain",
+     "opacity": 0.8,
+     "channels": {
+      "basecolor": "#2e1b10",
+      "roughness": 0.8
+     },
+     "mask": [
+      {
+       "type": "box",
+       "min": [
+        0,
+        0.03,
+        0
+       ],
+       "max": [
+        1,
+        0.15,
+        1
+       ],
+       "falloff": 0.02
+      },
+      {
+       "type": "box",
+       "min": [
+        0,
+        0.25,
+        0
+       ],
+       "max": [
+        1,
+        0.35,
+        1
+       ],
+       "falloff": 0.02,
+       "blend": "max"
+      },
+      {
+       "type": "box",
+       "min": [
+        0,
+        0.65,
+        0
+       ],
+       "max": [
+        1,
+        0.75,
+        1
+       ],
+       "falloff": 0.02,
+       "blend": "max"
+      },
+      {
+       "type": "box",
+       "min": [
+        0,
+        0.85,
+        0
+       ],
+       "max": [
+        1,
+        0.96,
+        1
+       ],
+       "falloff": 0.02,
+       "blend": "max"
+      },
+      {
+       "type": "noise",
+       "noise": "voronoi",
+       "scale": 30,
+       "seed": 13,
+       "threshold": {
+        "value": 0.5,
+        "softness": 0.03
+       },
+       "blend": "multiply"
+      }
+     ]
+    },
+    {
+     "id": "mud",
+     "opacity": 0.9,
+     "channels": {
+      "basecolor": "#3d2f22",
+      "roughness": 0.92
+     },
+     "mask": [
+      {
+       "type": "gradient",
+       "axis": "up",
+       "from": 0.13,
+       "to": 0.02,
+       "breakup": 0.6,
+       "scale": 7,
+       "seed": 2
+      },
+      {
+       "type": "noise",
+       "noise": "voronoi",
+       "scale": 18,
+       "seed": 14,
+       "threshold": {
+        "value": 0.3,
+        "softness": 0.05
+       },
+       "blend": "multiply"
+      }
+     ]
     }
+   ]
+  },
+  "Heads": {
+   "layers": [
+    {
+     "id": "head_oak",
+     "type": "smart",
+     "material": "wood",
+     "params": {
+      "space": "uv",
+      "rings": 16,
+      "light": "#b3743a",
+      "dark": "#552d14",
+      "roughness": 0.66,
+      "seed": 11
+     }
+    },
+    {
+     "id": "head_tone",
+     "blend": "multiply",
+     "opacity": 0.75,
+     "channels": {
+      "basecolor": {
+       "type": "island_random",
+       "seed": 31,
+       "gradient": [
+        "#9c7a5c",
+        "#e8d2ba",
+        "#ffffff"
+       ]
+      }
+     }
+    },
+    {
+     "id": "head_patches",
+     "blend": "multiply",
+     "opacity": 0.4,
+     "channels": {
+      "basecolor": "#8a5a3a"
+     },
+     "mask": [
+      {
+       "type": "noise",
+       "noise": "voronoi",
+       "space": "uv",
+       "scale": 7,
+       "seed": 6,
+       "threshold": {
+        "value": 0.55,
+        "softness": 0.02
+       }
+      }
+     ]
+    },
+    {
+     "id": "head_cavity",
+     "blend": "multiply",
+     "opacity": 0.9,
+     "channels": {
+      "basecolor": "#33190b",
+      "roughness": 0.8
+     },
+     "mask": [
+      {
+       "type": "cavity",
+       "levels": [
+        0.08,
+        0.45
+       ]
+      },
+      {
+       "type": "curvature",
+       "mode": "concave",
+       "levels": [
+        0.02,
+        0.35
+       ],
+       "blend": "max"
+      }
+     ]
+    },
+    {
+     "id": "head_edges",
+     "channels": {
+      "basecolor": "#d39556",
+      "roughness": 0.55
+     },
+     "mask": [
+      {
+       "type": "curvature",
+       "mode": "convex",
+       "levels": [
+        0.14,
+        0.5
+       ]
+      },
+      {
+       "type": "noise",
+       "noise": "voronoi",
+       "scale": 40,
+       "seed": 8,
+       "threshold": {
+        "value": 0.25,
+        "softness": 0.05
+       },
+       "blend": "multiply"
+      },
+      {
+       "type": "noise",
+       "noise": "fbm",
+       "scale": 8,
+       "seed": 17,
+       "range": [
+        0.25,
+        1.5
+       ],
+       "blend": "multiply"
+      }
+     ]
+    },
+    {
+     "id": "head_chips",
+     "channels": {
+      "basecolor": "#c4884e",
+      "roughness": 0.72,
+      "height": -0.25
+     },
+     "mask": [
+      {
+       "type": "edge_wear",
+       "amount": 0.32,
+       "width": 0.35,
+       "breakup": 0.9,
+       "scale": 30,
+       "noise": "cells",
+       "softness": 0.02,
+       "seed": 10
+      }
+     ]
+    }
+   ]
+  },
+  "Hoops": {
+   "layers": [
+    {
+     "id": "hoop_iron",
+     "type": "smart",
+     "material": "wrought_iron",
+     "params": {
+      "rust": 0.4,
+      "wear": 0.2,
+      "seed": 2
+     }
+    },
+    {
+     "id": "hoop_edge_band",
+     "channels": {
+      "basecolor": "#a9a397",
+      "metallic": 1,
+      "roughness": 0.3
+     },
+     "mask": [
+      {
+       "type": "curvature",
+       "mode": "convex",
+       "levels": [
+        0.12,
+        0.45
+       ]
+      },
+      {
+       "type": "noise",
+       "noise": "voronoi",
+       "scale": 50,
+       "seed": 3,
+       "threshold": {
+        "value": 0.2,
+        "softness": 0.05
+       },
+       "blend": "multiply"
+      }
+     ]
+    },
+    {
+     "id": "hoop_rust_chunks",
+     "channels": {
+      "basecolor": {
+       "type": "noise",
+       "noise": "fbm",
+       "scale": 50,
+       "seed": 5,
+       "gradient": [
+        "#33180a",
+        "#5e2d13",
+        "#86451f"
+       ]
+      },
+      "metallic": 0,
+      "roughness": 0.9,
+      "height": 0.12
+     },
+     "mask": [
+      {
+       "type": "grunge",
+       "style": "rust",
+       "amount": 0.32,
+       "scale": 7,
+       "seed": 12,
+       "threshold": {
+        "value": 0.5,
+        "softness": 0.04
+       }
+      },
+      {
+       "type": "direction",
+       "direction": "down",
+       "min": 0.3,
+       "max": 0.8,
+       "breakup": 0.5,
+       "scale": 25,
+       "blend": "max",
+       "opacity": 0.8
+      },
+      {
+       "type": "noise",
+       "noise": "fbm",
+       "scale": 60,
+       "seed": 13,
+       "range": [
+        0.1,
+        1.6
+       ],
+       "blend": "multiply"
+      }
+     ]
+    }
+   ]
   }
+ }
 }
