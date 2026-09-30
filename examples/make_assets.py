@@ -19,6 +19,8 @@ Assets (all +Y up in glTF, modifiers applied, split/custom normals, TEXCOORD_0, 
     hammer.glb   two objects: Handle + Head                         materials: Wood, Steel
     suzanne.glb  Suzanne, subdivision level 2 applied, smooth       material: Skin
     panel.glb    sci-fi panel with recessed grooves + bolts         material: Panel
+    boltplate_low.glb / boltplate_high.glb   normal-bake test pair: hard-edged Plate_low + Bar_low (touching),
+                 beveled Plate_high (raised panel, hex bolts) + Bar_high (bolts); materials: Plate, Bar
 
 UVs:
   * hard-surface / organic meshes: Smart UV Project (angle 66, island margin 0.02) is used to
@@ -48,7 +50,7 @@ import bpy
 import bmesh
 from mathutils import Matrix
 
-ASSET_NAMES = ("crate", "barrel", "hammer", "suzanne", "panel")
+ASSET_NAMES = ("crate", "barrel", "hammer", "suzanne", "panel", "boltplate_low", "boltplate_high")
 
 UV_ANGLES = (66.0, 55.0, 45.0, 35.0)   # smart-project angle limits tried in order
 UV_ISLAND_MARGIN = 0.02                # smart project margin
@@ -175,6 +177,8 @@ def unwrap(obj, uv_mode=None, check=None):
     'patina_uv_done' (unwrapped by their builder before beveling) are only re-checked."""
     uv_mode = OPTS["uv_mode"] if uv_mode is None else uv_mode
     check = OPTS["check"] if check is None else check
+    if obj.get("patina_skip_uv"):
+        return {"_method": "none (high poly)"}
     if obj.get("patina_uv_done"):
         report = uv_report(obj, check)
         report["_method"] = obj["patina_uv_done"]
@@ -603,6 +607,66 @@ def build_barrel():
     return [staves, heads, hoops]
 
 
+def _box_bm(sx, sy, sz, cx=0.0, cy=0.0, cz=0.0):
+    bm = bmesh.new()
+    bmesh.ops.create_cube(bm, size=1.0)
+    bmesh.ops.scale(bm, vec=(sx, sy, sz), verts=bm.verts)
+    bmesh.ops.translate(bm, vec=(cx, cy, cz), verts=bm.verts)
+    return bm
+
+
+def _hex_bolt(bm, x, y, z, r=0.028, h=0.018):
+    """Hex bolt head sitting on z, merged into bm."""
+    tmp = bmesh.new()
+    bmesh.ops.create_cone(tmp, cap_ends=True, cap_tris=False, segments=6, radius1=r, radius2=r, depth=h)
+    bmesh.ops.translate(tmp, vec=(x, y, z + h / 2), verts=tmp.verts)
+    me = bpy.data.meshes.new("_tmp_bolt")
+    tmp.to_mesh(me)
+    tmp.free()
+    bm.from_mesh(me)
+    bpy.data.meshes.remove(me)
+
+
+PLATE = (1.0, 0.6, 0.1)          # size; sits on z = 0
+BAR = (0.6, 0.1, 0.06)           # size; lies on the plate's raised panel
+PANEL = 0.012                    # height of the high plate's raised panel
+
+
+def build_boltplate_low():
+    """Bake test, low poly: two hard-edged boxes (flat shaded, split normals). The bar touches the
+    plate, so without name matching plate texels next to it would pick up the bar's high poly."""
+    plate_m = make_material("Plate", (0.5, 0.5, 0.52), 1.0, 0.4)
+    bar_m = make_material("Bar", (0.3, 0.3, 0.32), 1.0, 0.5)
+    plate = object_from_bmesh("Plate_low", _box_bm(*PLATE, cz=PLATE[2] / 2), [plate_m])
+    bar = object_from_bmesh("Bar_low", _box_bm(*BAR, cz=PLATE[2] + PANEL + BAR[2] / 2), [bar_m])  # on the raised panel
+    for o in (plate, bar):
+        o.data.shade_flat()
+    return [plate, bar]
+
+
+def build_boltplate_high():
+    """Bake test, high poly: beveled plate with a raised centre panel and six hex bolts; beveled bar
+    with two bolts. Part names match the low file (Plate_high <- Plate_low)."""
+    m = make_material("High", (0.5, 0.5, 0.5), 1.0, 0.4)
+    bm = _box_bm(*PLATE, cz=PLATE[2] / 2)
+    top = [f for f in bm.faces if f.normal.z > 0.9]
+    r = bmesh.ops.inset_region(bm, faces=top, thickness=0.09, depth=0.0)
+    bmesh.ops.inset_region(bm, faces=top, thickness=0.0, depth=PANEL)      # raised panel
+    for x in (-0.44, 0.0, 0.44):
+        for y in (-0.255, 0.255):
+            _hex_bolt(bm, x, y, PLATE[2])
+    plate = object_from_bmesh("Plate_high", bm, [m])
+    bm = _box_bm(*BAR, cz=PLATE[2] + PANEL + BAR[2] / 2)
+    for x in (-0.24, 0.24):
+        _hex_bolt(bm, x, 0.0, PLATE[2] + PANEL + BAR[2], r=0.022, h=0.014)
+    bar = object_from_bmesh("Bar_high", bm, [m])
+    for o in (plate, bar):
+        add_bevel(o, width=0.008, segments=4)
+        apply_modifiers(o)
+        o["patina_skip_uv"] = True                  # high polys are never textured
+    return [plate, bar]
+
+
 def build_hammer():
     wood = make_material("Wood", (0.55, 0.38, 0.20), 0.0, 0.6)
     steel = make_material("Steel", (0.56, 0.57, 0.58), 1.0, 0.35)
@@ -704,6 +768,7 @@ def build_panel():
 
 
 BUILDERS = {"crate": build_crate, "barrel": build_barrel, "hammer": build_hammer,
+            "boltplate_low": build_boltplate_low, "boltplate_high": build_boltplate_high,
             "suzanne": build_suzanne, "panel": build_panel}
 
 

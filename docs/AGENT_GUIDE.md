@@ -219,7 +219,8 @@ together with a `sphere` or `box` mask.
 
 **Metals: base color is the reflectance.** Keep bare metal bright (`#8a8680`..`#c8c8c8`, metallic 1); a dark
 metallic base renders black. For blackened or painted iron, put a dark non-metal layer (forge scale, paint) on
-top and wear it off at the edges. See `examples/projects/barrel.patina.json`.
+top and wear it off at the edges. For hoops, bands, hinges and fittings start from
+`{"type":"smart","material":"wrought_iron","params":{"rust":0.4,"wear":0.5}}` (see `examples/projects/barrel.patina.json`).
 
 **Mask coverage**: `range` remaps a mask effect before blending (clamped to 0..1): `[0.7, 1.8]` covers most of
 the surface, `[-0.5, 1]` leaves gaps.
@@ -282,3 +283,31 @@ Put JSON files in `<project dir>/library/` or in a directory on `$PATINA_LIBRARY
 - `"${param}"` substitutes a parameter value.
 - `"${wear*0.5+0.1}"` evaluates arithmetic.
 - `"extends": "other_material"` inherits another material's layers with new defaults.
+
+## 12. Baking normals (high poly and bevel shader)
+
+Add a `normal` block to the project's `bake` settings. The baked tangent-space normal (MikkTSpace, same as
+Blender/Unreal/Unity) becomes the base of every texture set's normal map; layer height and normal detail
+sit on top. It also feeds the curvature map, so `edge_wear` and dirt follow baked edges and details.
+
+```json
+"bake": {"normal": {"high": "crate_high.glb", "cage": 0.02, "depth": 0.02, "bevel": {"radius": 0.006}}}
+```
+
+| Key | Default | Meaning |
+|---|---|---|
+| `high` | none | high-poly mesh (path relative to the project). Leave it out to bake only the bevel shader from the low poly. |
+| `match` | `"name"` | bake groups by part name: everything before a `high`/`low` token (also `hi`/`lo`/`hp`/`lp`, case-insensitive) is the group, so `Plate_low` bakes only from `Plate_high` and `Plate_high_bolts`. No bleed between parts. `"all"`: every low part sees the whole high mesh. |
+| `cage` / `depth` | 0.02 / 0.02 | how far outside / inside the low surface rays search (fraction of object size). Raise them when `bake_misses` shows red. |
+| `skew` | `"auto"` | ray direction. `auto` uses averaged (cage) normals at hard edges, so there are no gaps, and the low's own normal elsewhere, so details on big faces are not skewed. A number blends 0 = averaged, 1 = shading normal. |
+| `skew_distance` | 0.03 | auto: distance from hard edges over which rays turn. |
+| `samples` | 4 | supersamples per texel. |
+| `bevel` | off | bevel shader: `{"radius": 0.006, "samples": 64, "min_angle": 10, "scope": "part"}` rounds edges sharper than `min_angle`. It runs on the high poly when there is one, otherwise on the low. `scope: "all"` also rounds where separate parts meet. |
+| `curvature` | 1 | how much the baked normal adds to the curvature map. |
+| `ignore_backfaces`, `denoise` | true | |
+
+- Check `render(mode="bake_normal")` and `render(mode="bake_misses")` before texturing.
+- `bake` reports groups, misses and warnings (for example, a low part with no `_high` partner).
+- Low-poly rules still apply: triangulate, split UVs at hard edges, keep the high poly inside the cage.
+- A bevel-only bake is the fast path for hard-surface lows without a high poly: rounded edges and edge wear in one line.
+

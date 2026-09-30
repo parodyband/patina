@@ -78,6 +78,26 @@ r=$("$BIN" batch --do render "$W/crate.patina.json" "$W/barrel.patina.json" "$W/
 [ "$r" = "3" ] || fail "batch"
 ok "batch render x3"
 
+# normal baking: high -> low with _low/_high name matching, anti-skew, bevel shader
+cat > "$W/bake.patina.json" <<EOF
+{"patina": 1, "name": "bake", "mesh": "../examples/assets/boltplate_low.glb", "resolution": 256,
+ "bake": {"normal": {"high": "../examples/assets/boltplate_high.glb", "cage": 0.03, "depth": 0.03, "bevel": {"radius": 0.004, "samples": 16}}},
+ "texture_sets": {"Plate": {"layers": [{"id": "p", "type": "smart", "material": "painted_metal"}]},
+                  "Bar": {"layers": [{"id": "b", "type": "smart", "material": "iron"}]}}}
+EOF
+out=$("$BIN" bake "$W/bake.patina.json" --force --compact)
+[ "$(echo "$out" | json "d['stats']['normal']['miss_fraction'] == 0")" = "True" ] || fail "normal bake misses"
+[ "$(echo "$out" | json "sorted((g['low'], g['high'][0]) for g in d['stats']['normal']['groups'])")" = "[('Bar_low', 'Bar_high'), ('Plate_low', 'Plate_high')]" ] || fail "bake groups by name"
+[ "$(echo "$out" | json "len(d['stats']['normal']['warnings'])")" = "0" ] || fail "bake warnings"
+for mode in bake_normal bake_misses lit; do
+  "$BIN" render "$W/bake.patina.json" --views iso --size 96 --mode $mode --out "$W/bake_$mode.png" --compact >/dev/null || fail "render $mode"
+done
+sed 's/"cage": 0.03, "depth": 0.03, "bevel": {"radius": 0.004, "samples": 16}/"skew": 0.5, "match": "all"/' "$W/bake.patina.json" > "$W/bake_fixed.patina.json"
+"$BIN" bake "$W/bake_fixed.patina.json" --force --compact >/dev/null || fail "bake with fixed skew"
+sed 's/"high": "..\/examples\/assets\/boltplate_high.glb", //' "$W/bake.patina.json" > "$W/bevel.patina.json"
+"$BIN" export "$W/bevel.patina.json" --preset gltf --out "$W/tex_bevel" --compact >/dev/null || fail "bevel-only bake + export"
+ok "normal bake: name-matched groups, no misses, anti-skew, bevel shader"
+
 # example project: UV-space wood grain, mask range, all three lighting environments
 [ "$("$BIN" validate examples/projects/barrel.patina.json --compact | json "d['ok']")" = "True" ] || fail "validate barrel example"
 for env in studio procedural third_party/hdri/studio_small_09_1k.hdr; do

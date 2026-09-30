@@ -1567,6 +1567,13 @@ SetResult evaluate_set(const Project& proj, const Baked& bk, int set, const Eval
   } else {
     par(c.n, [&](size_t i) { nfinal[i * 3] = 0; nfinal[i * 3 + 1] = 0; nfinal[i * 3 + 2] = 1; });
   }
+  bool baked = !ss.nmap.empty();
+  if (baked) {  // baked normal (high poly / bevel) is the base; layer height detail sits on top of it
+    par(c.n, [&](size_t i) {
+      vec3 o = rnm(ss.nmap[i], vec3(nfinal[i * 3], nfinal[i * 3 + 1], nfinal[i * 3 + 2]));
+      nfinal[i * 3] = o.x; nfinal[i * 3 + 1] = o.y; nfinal[i * 3 + 2] = o.z;
+    });
+  }
   if (st.used[C_NORMAL]) {
     par(c.n, [&](size_t i) {
       vec3 a{nfinal[i * 3], nfinal[i * 3 + 1], nfinal[i * 3 + 2]}, b{st.ch[C_NORMAL][i * 3], st.ch[C_NORMAL][i * 3 + 1], st.ch[C_NORMAL][i * 3 + 2]};
@@ -1575,7 +1582,7 @@ SetResult evaluate_set(const Project& proj, const Baked& bk, int set, const Eval
     });
   }
   st.ch[C_NORMAL].swap(nfinal);
-  st.used[C_NORMAL] = st.used[C_NORMAL] || st.used[C_HEIGHT];
+  st.used[C_NORMAL] = st.used[C_NORMAL] || st.used[C_HEIGHT] || baked;
   // final AO = baked AO x painted AO; clamp ranges
   par(c.n, [&](size_t i) {
     st.ch[C_AO][i] = saturate(ss.ao[i] * st.ch[C_AO][i]);
@@ -1618,7 +1625,18 @@ SetMaps make_maps(const SampleSet& ss, const SetResult& r, const std::vector<std
     } else if (e == "bake_ao") to_image(ss, ss.ao.data(), 1, img.data());
     else if (e == "curvature") to_image(ss, ss.curvature.data(), 1, img.data());
     else if (e == "thickness") to_image(ss, ss.thickness.data(), 1, img.data());
-    else continue;
+    else if (e == "bake_misses") {
+      if (ss.nmiss.empty()) continue;
+      std::vector<float> f(ss.size());
+      for (size_t i = 0; i < f.size(); i++) f[i] = ss.nmiss[i];
+      to_image(ss, f.data(), 1, img.data());
+    } else if (e == "bake_normal") {  // 3 components
+      if (ss.nmap.empty()) continue;
+      std::vector<float> f(ss.size() * 3);
+      for (size_t i = 0; i < ss.size(); i++) { f[i * 3] = ss.nmap[i].x; f[i * 3 + 1] = ss.nmap[i].y; f[i * 3 + 2] = ss.nmap[i].z; }
+      img.resize(npx * 3);
+      to_image(ss, f.data(), 3, img.data());
+    } else continue;
     m.extra[e] = std::move(img);
   }
   return m;

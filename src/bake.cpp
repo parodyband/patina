@@ -16,6 +16,7 @@ void BakeSettings::from_json(const Json& j) {
   curvature_radius = std::clamp(j.numf("curvature_radius", curvature_radius), 1e-4f, 0.5f);
   curvature_gain = std::clamp(j.numf("curvature_gain", curvature_gain), 0.01f, 100.f);
   curvature_min_angle = std::clamp(j.numf("curvature_min_angle", curvature_min_angle), 0.f, 90.f);
+  if (const Json* n = j.find("normal")) normal.from_json(*n);
 }
 Json BakeSettings::to_json() const {
   Json j = Json::object();
@@ -26,6 +27,7 @@ Json BakeSettings::to_json() const {
   j.set("curvature_radius", curvature_radius);
   j.set("curvature_gain", curvature_gain);
   j.set("curvature_min_angle", curvature_min_angle);
+  if (normal.active()) j.set("normal", normal.to_json());
   return j;
 }
 uint64_t BakeSettings::hash() const { return fnv1a(to_json().dump()); }
@@ -502,19 +504,22 @@ static bool load_cache(const std::string& path, std::vector<SampleSet>& sets) {
     return true;
   };
   uint32_t magic = 0, count = 0;
-  if (!rd(&magic, 4) || magic != 0x31544150u || !rd(&count, 4) || count != sets.size()) return false;
+  if (!rd(&magic, 4) || magic != 0x32544150u || !rd(&count, 4) || count != sets.size()) return false;
   for (auto& ss : sets) {
-    uint64_t n = 0;
+    uint64_t n = 0, nn = 0;
     if (!rd(&n, 8) || n != ss.size()) return false;
     ss.ao.resize(n); ss.thickness.resize(n); ss.curvature.resize(n);
     if (!rd(ss.ao.data(), n * 4) || !rd(ss.thickness.data(), n * 4) || !rd(ss.curvature.data(), n * 4)) return false;
+    if (!rd(&nn, 8) || (nn != 0 && nn != n)) return false;
+    ss.nmap.resize(nn); ss.nmiss.resize(nn);
+    if (nn && (!rd(ss.nmap.data(), nn * sizeof(vec3)) || !rd(ss.nmiss.data(), nn))) return false;
   }
   return true;
 }
 
 static void save_cache(const std::string& path, const std::vector<SampleSet>& sets) {
   std::string out;
-  uint32_t magic = 0x31544150u, count = (uint32_t)sets.size();
+  uint32_t magic = 0x32544150u, count = (uint32_t)sets.size();
   out.append((const char*)&magic, 4);
   out.append((const char*)&count, 4);
   for (auto& ss : sets) {
@@ -523,6 +528,10 @@ static void save_cache(const std::string& path, const std::vector<SampleSet>& se
     out.append((const char*)ss.ao.data(), n * 4);
     out.append((const char*)ss.thickness.data(), n * 4);
     out.append((const char*)ss.curvature.data(), n * 4);
+    uint64_t nn = ss.nmap.size();
+    out.append((const char*)&nn, 8);
+    out.append((const char*)ss.nmap.data(), nn * sizeof(vec3));
+    out.append((const char*)ss.nmiss.data(), nn);
   }
   make_dirs(path_dir(path));
   write_file_or_throw(path, out);
@@ -538,8 +547,15 @@ std::shared_ptr<Baked> bake_mesh(std::shared_ptr<const Mesh> mesh, const std::ve
   Json stats = Json::object();
   Timer total;
 
-  uint64_t key = m.content_hash ^ s.hash();
+  // bump when baker output changes so stale disk caches are never reused
+  static const uint64_t kBakerVersion = 4;
+  uint64_t key = fnv1a(&kBakerVersion, sizeof kBakerVersion, m.content_hash ^ s.hash());
   for (int r : res_per_set) key = fnv1a(&r, sizeof r, key);
+  std::shared_ptr<Mesh> high;
+  if (!s.normal.high.empty()) {
+    high = std::make_shared<Mesh>(load_mesh(s.normal.high));
+    key = fnv1a(&high->content_hash, sizeof high->content_hash, key);
+  }
   bk->key = key;
 
   Timer t;
@@ -575,6 +591,7 @@ std::shared_ptr<Baked> bake_mesh(std::shared_ptr<const Mesh> mesh, const std::ve
     bake_curvature(m, es, ptrs, s);
     stats.set("curvature_ms", t.ms());
     stats.set("curvature_edge_samples", (int64_t)es.p.size());
+    if (s.normal.active()) bake_normals(m, high.get(), bk->sets, s, stats);
     if (!cpath.empty()) {
       try { save_cache(cpath, bk->sets); } catch (const std::exception&) { /* cache is best-effort */ }
     }

@@ -21,6 +21,7 @@ int Project::set_resolution(const std::string& set) const {
 BakeSettings Project::bake_settings() const {
   BakeSettings b;
   b.from_json(doc["bake"]);
+  if (!b.normal.high.empty()) b.normal.high = path_abs(resolve(b.normal.high));
   return b;
 }
 float Project::height_depth() const { return doc.numf("height_depth", 0.005f); }

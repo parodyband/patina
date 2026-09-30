@@ -82,6 +82,40 @@ static const char* kBuiltinLibrary = R"JSON(
     ]
   },
 
+  "wrought_iron": {
+    "description": "Forged iron for hoops, bands, hinges and fittings: gunmetal with hammer marks, mottled forge scale, grime in cavities, crumbly rust in crevices and on lower edges, bright worn edges.",
+    "params": {"tint": {"default": "#56524d", "doc": "iron color; keep it mid-gray (a metal's base color is its reflectance: near-black metal renders black)"},
+               "wear": {"default": 0.5, "doc": "0..1 bright worn edges"},
+               "rust": {"default": 0.35, "doc": "0..1 rust amount"},
+               "hammered": {"default": 1, "doc": "0..1 hammer-mark strength"},
+               "seed": {"default": 0}},
+    "layers": [
+      {"id": "iron", "channels": {
+          "basecolor": {"type": "noise", "noise": "fbm", "scale": 14, "seed": "${seed}", "gradient": [[0, "#3e3c39"], [0.5, "${tint}"], [1, "#67625b"]]},
+          "metallic": 1,
+          "roughness": {"type": "noise", "noise": "fbm", "scale": 22, "seed": "${seed+1}", "range": [0.36, 0.6]},
+          "height": {"type": "noise", "noise": "cells", "scale": 26, "jitter": 0.9, "seed": "${seed+2}", "power": 0.6, "range": ["${0-0.3*hammered}", 0.0]}}},
+      {"id": "pitting", "channels": {
+          "roughness": {"type": "noise", "noise": "fbm", "scale": 140, "seed": "${seed+14}", "range": [-0.06, 0.1]},
+          "height": {"type": "noise", "noise": "dots", "scale": 260, "size": 0.16, "jitter": 1, "seed": "${seed+15}", "range": [0.0, -0.05]}},
+        "blend_modes": {"roughness": "add", "height": "add"}},
+      {"id": "scale", "opacity": 0.65, "channels": {"basecolor": "#23211f", "metallic": 0.7, "roughness": 0.58},
+        "mask": [{"type": "noise", "noise": "fbm", "scale": 7, "seed": "${seed+3}", "range": [-0.6, 1.3]},
+                 {"type": "noise", "noise": "fbm", "scale": 60, "seed": "${seed+4}", "range": [0.5, 1.2], "blend": "multiply"}]},
+      {"id": "grime", "opacity": 0.8, "channels": {"basecolor": "#1b1917", "roughness": 0.78, "metallic": 0.4},
+        "mask": [{"type": "dirt", "amount": 0.45, "seed": "${seed+5}"}]},
+      {"id": "rust", "channels": {
+          "basecolor": {"type": "noise", "noise": "fbm", "scale": 110, "seed": "${seed+6}", "warp": 0.5, "gradient": [[0, "#24120a"], [0.45, "#43230f"], [0.8, "#6b3517"], [1, "#8c4a22"]]},
+          "metallic": 0, "roughness": {"type": "noise", "noise": "fbm", "scale": 90, "seed": "${seed+7}", "range": [0.8, 0.95]},
+          "height": {"type": "noise", "noise": "turbulence", "scale": 80, "seed": "${seed+8}", "range": [0.0, 0.08]}},
+        "mask": [{"type": "dirt", "amount": "${rust}", "breakup": 0.8, "seed": "${seed+9}"},
+                 {"type": "direction", "direction": "down", "min": 0.1, "max": 0.7, "breakup": 0.7, "scale": 30, "seed": "${seed+10}", "blend": "max", "opacity": "${rust}"},
+                 {"type": "grunge", "style": "rust", "amount": "${rust*0.45}", "scale": 16, "seed": "${seed+11}", "blend": "max"},
+                 {"type": "noise", "noise": "fbm", "scale": 150, "seed": "${seed+12}", "range": [-0.4, 1.8], "blend": "multiply"}]},
+      {"id": "worn", "channels": {"basecolor": "#a09a91", "metallic": 1, "roughness": 0.26},
+        "mask": [{"type": "edge_wear", "amount": "${wear}", "seed": "${seed+13}"}]}
+    ]
+  },
   "plastic": {
     "description": "Molded plastic with subtle roughness variation and light edge wear.",
     "params": {"color": {"default": "#c23b22"}, "roughness": {"default": 0.4}, "wear": {"default": 0.15}, "seed": {"default": 0}},

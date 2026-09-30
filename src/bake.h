@@ -8,6 +8,30 @@
 
 namespace pt {
 
+// Tangent-space normal baking: high -> low (cage + anti-skew + name matching) and/or a bevel shader
+// (rounded edges from ray sampling, like Blender's Bevel node). Lengths are fractions of the low mesh's
+// largest dimension. Active when "high" is set or bevel_radius > 0.
+struct NormalBakeSettings {
+  std::string high;             // high-poly mesh (absolute path), "" = none
+  std::string match = "name";   // name: *_low bakes only from *_high with the same base name | all
+  float cage = 0.02f;           // how far outside the low surface rays start (automatic averaged-normal cage)
+  float depth = 0.02f;          // how far inside the low surface rays still look
+  float skew = -1.f;            // -1 = auto; 0 = averaged cage direction, 1 = low shading normal
+  float skew_distance = 0.03f;  // auto: distance from hard edges over which rays turn from cage to shading normal
+  bool ignore_backfaces = true;
+  int samples = 4;              // supersamples per texel (1, 4, 9, 16)
+  float bevel_radius = 0.f;     // bevel shader radius (0 = off)
+  int bevel_samples = 64;
+  float bevel_min_angle = 10.f;  // degrees: edges flatter than this are not rounded
+  bool bevel_same_part = true;   // only round against the same part (touching parts stay crisp)
+  bool denoise = true;
+  float curvature = 1.f;         // how much the baked normal adds to the curvature map (edge wear follows it)
+
+  bool active() const { return !high.empty() || bevel_radius > 0.f; }
+  void from_json(const Json& j);
+  Json to_json() const;
+};
+
 struct BakeSettings {
   int ao_samples = 48;
   float ao_distance = 0.3f;         // fraction of the mesh's largest dimension
@@ -16,6 +40,7 @@ struct BakeSettings {
   float curvature_radius = 0.012f;  // fraction of largest dimension
   float curvature_gain = 1.0f;
   float curvature_min_angle = 1.5f;  // degrees; flatter edges are ignored
+  NormalBakeSettings normal;
 
   void from_json(const Json& j);
   Json to_json() const;
@@ -37,6 +62,8 @@ struct SampleSet {
   std::vector<vec2> uv;
   std::vector<float> len_u, len_v;   // world length of one texel step along image x / y
   std::vector<float> ao, thickness, curvature;
+  std::vector<vec3> nmap;       // baked tangent-space normal (MikkTSpace, +Y = OpenGL); empty = none
+  std::vector<uint8_t> nmiss;   // 1 = no high-poly surface found (cage too tight or no matching part)
   std::vector<int32_t> pad;  // res*res -> nearest sample (padding / 2D neighborhood ops)
   size_t size() const { return texel.size(); }
   size_t interior_count = 0;
@@ -54,6 +81,9 @@ struct Baked {
 // res_per_set.size() == mesh->set_names.size(). cache_dir may be empty (no disk cache).
 std::shared_ptr<Baked> bake_mesh(std::shared_ptr<const Mesh> mesh, const std::vector<int>& res_per_set, const BakeSettings& s,
                                  const std::string& cache_dir, bool force);
+
+// Normal bake (bake_normal.cpp): fills SampleSet::nmap/nmiss and adds normal-derived curvature.
+void bake_normals(const Mesh& low, const Mesh* high, std::vector<SampleSet>& sets, const BakeSettings& s, Json& stats);
 
 // Scatter per-sample values into a full padded image (every texel filled from its nearest sample).
 void to_image(const SampleSet& ss, const float* samples, int comps, float* out_image);

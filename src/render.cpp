@@ -83,6 +83,8 @@ Json render_modes() {
   j.set("curvature", "baked curvature (0.5 = flat)");
   j.set("thickness", "baked thickness");
   j.set("bake_ao", "baked ambient occlusion only");
+  j.set("bake_normal", "the baked tangent-space normal map alone (high poly / bevel shader), as colors");
+  j.set("bake_misses", "red where the normal bake found no high-poly surface: widen bake.normal cage/depth or fix part names");
   j.set("mask:<layer_id>", "a layer's effective mask in red over clay - debug where a layer applies");
   j.set("islands", "random color per UV island");
   j.set("uv_checker", "UV checker to inspect distortion/texel density");
@@ -346,7 +348,7 @@ RgbImage render_view(const Mesh& m, const BVH& bvh, const std::vector<SetMaps>& 
 
   std::string mode = o.mode;
   std::string mask_key;
-  if (mode.rfind("mask:", 0) == 0) mask_key = mode;
+  if (mode.rfind("mask:", 0) == 0 || mode == "bake_misses") mask_key = mode;
   float eps = m.max_extent() * 2e-4f;
   std::vector<vec3> hdr((size_t)W * H);
   parallel_for(H, 4, [&](int64_t y0, int64_t y1) {
@@ -386,9 +388,11 @@ RgbImage render_view(const Mesh& m, const BVH& bvh, const std::vector<SetMaps>& 
         } else {
           base[0] = base[1] = base[2] = 0.18f;
         }
-        tg = normalize(tg - nrm * dot(nrm, tg));
-        vec3 bt = cross(nrm, tg) * tw;
-        vec3 N = normalize(tg * nts[0] + bt * nts[1] + nrm * nts[2]);
+        // MikkTSpace decode (what engines do): unnormalized interpolated vT, vN; vB = sign * cross(vN, vT)
+        vec3 vN = m.nrm[i0] * b0 + m.nrm[i1] * b1 + m.nrm[i2] * b2;
+        if (dot(vN, nrm) < 0) vN = -vN;
+        vec3 bt = cross(vN, tg) * tw;
+        vec3 N = normalize(tg * nts[0] + bt * nts[1] + vN * nts[2]);
         if (dot(N, V) < 0) N = normalize(N - V * (dot(N, V) * 1.01f));
         auto key_vis = [&]() {
           if (!o.shadows) return 1.f;
@@ -427,6 +431,14 @@ RgbImage render_view(const Mesh& m, const BVH& bvh, const std::vector<SetMaps>& 
         else if (mode == "ao") c = gray(ao);
         else if (mode == "opacity") c = gray(op);
         else if (mode == "normal") c = vec3(nts[0] * 0.5f + 0.5f, nts[1] * 0.5f + 0.5f, nts[2] * 0.5f + 0.5f) * -1.f;
+        else if (mode == "bake_normal") {
+          float bn[3] = {0, 0, 1};
+          if (sm) {
+            auto it = sm->extra.find(mode);
+            if (it != sm->extra.end()) sample_map(it->second, 3, res, uv.x, uv.y, bn);
+          }
+          c = vec3(bn[0] * 0.5f + 0.5f, bn[1] * 0.5f + 0.5f, bn[2] * 0.5f + 0.5f) * -1.f;
+        }
         else if (mode == "height" || mode == "curvature" || mode == "thickness" || mode == "bake_ao") {
           float h = 0;
           if (sm) {

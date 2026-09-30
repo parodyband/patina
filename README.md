@@ -25,6 +25,7 @@ Substance Painter is built for people with a mouse. Agents need:
 | Reproducibility | **Deterministic output**: the same project gives bit-identical textures every time. |
 | Scale | **Parallelism everywhere**: baking, evaluation, rendering and PNG encoding use every core, MCP tool calls run concurrently, and `batch`/`variants` fan out across assets and alternatives. |
 | No UV seams | **3D procedural noise evaluated at the surface position**, so noise is seamless across seams. |
+| Normal maps without the fuss | A **high-to-low normal baker** with automatic cage, automatic anti-skew and `_low`/`_high` name matching (no bleed between parts), plus a **bevel shader** that bakes rounded edges from the low poly alone. MikkTSpace throughout. |
 | Engine-ready output | Export presets for Blender, glTF (ORM), Unreal, Unity HDRP/URP and Godot, plus a textured `.glb` and a Blender bridge that builds the materials. |
 
 <p>

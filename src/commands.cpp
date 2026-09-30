@@ -328,7 +328,7 @@ static RenderOptions project_render_options(const Project& p, const Json& a) {
 std::vector<std::string> extra_maps_for_mode(const std::string& mode) {
   std::vector<std::string> e;
   if (mode.rfind("mask:", 0) == 0) e.push_back(mode);
-  if (mode == "curvature" || mode == "thickness" || mode == "bake_ao") e.push_back(mode);
+  if (mode == "curvature" || mode == "thickness" || mode == "bake_ao" || mode == "bake_normal" || mode == "bake_misses") e.push_back(mode);
   return e;
 }
 

@@ -37,25 +37,7 @@
     },
     "Hoops": {
       "layers": [
-        {"id": "iron", "channels": {
-            "basecolor": {"type": "noise", "noise": "fbm", "scale": 30, "seed": 2, "gradient": ["#8a8680", "#a39f98"]},
-            "metallic": 1,
-            "roughness": {"type": "noise", "noise": "fbm", "scale": 45, "seed": 4, "range": [0.3, 0.48]},
-            "height": {"type": "noise", "noise": "cells", "scale": 70, "seed": 5, "range": [0.0, -0.04]}}},
-        {"id": "forge_scale", "channels": {
-            "basecolor": {"type": "noise", "noise": "fbm", "scale": 25, "seed": 6, "gradient": ["#141312", "#2c2927"]},
-            "metallic": 0.35, "roughness": {"type": "noise", "noise": "fbm", "scale": 60, "seed": 7, "range": [0.45, 0.62]}},
-         "mask": [{"type": "noise", "noise": "fbm", "scale": 18, "seed": 8, "range": [0.75, 1.9]},
-                  {"type": "edge_wear", "amount": 0.6, "seed": 9, "blend": "subtract"}]},
-        {"id": "rust", "channels": {
-            "basecolor": {"type": "noise", "noise": "fbm", "scale": 160, "seed": 10, "gradient": ["#35190c", "#63321a", "#8a4f28"]},
-            "metallic": 0,
-            "roughness": {"type": "noise", "noise": "fbm", "scale": 120, "seed": 11, "range": [0.8, 0.95]},
-            "height": 0.06},
-         "mask": [{"type": "grunge", "style": "rust", "amount": 0.18, "scale": 24, "seed": 3},
-                  {"type": "direction", "direction": "down", "min": 0.2, "max": 0.6, "breakup": 0.6, "scale": 40, "blend": "max", "opacity": 0.7},
-                  {"type": "grunge", "style": "speckle", "amount": 0.3, "scale": 10, "seed": 12, "blend": "max", "opacity": 0.8}]},
-        {"id": "grime", "type": "smart", "material": "dirt_overlay", "params": {"amount": 0.2}}
+        {"id": "hoop_iron", "type": "smart", "material": "wrought_iron", "params": {"rust": 0.45, "wear": 0.5, "seed": 2}}
       ]
     }
   }

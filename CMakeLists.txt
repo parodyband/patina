@@ -21,8 +21,8 @@ else()
 endif()
 
 # ---- third-party single-header implementations (compiled once, rarely rebuilt)
-add_library(patina_thirdparty STATIC src/thirdparty_impl.c)
-target_include_directories(patina_thirdparty PUBLIC third_party)
+add_library(patina_thirdparty STATIC src/thirdparty_impl.c third_party/mikktspace/mikktspace.c)
+target_include_directories(patina_thirdparty PUBLIC third_party third_party/mikktspace)
 
 # ---- engine core (everything except the CLI entry point and the viewer)
 add_library(patina_core STATIC
@@ -32,6 +32,7 @@ add_library(patina_core STATIC
   src/mesh.cpp
   src/bvh.cpp
   src/bake.cpp
+  src/bake_normal.cpp
   src/noise.cpp
   src/image.cpp
   src/eval.cpp

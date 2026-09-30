@@ -5,6 +5,7 @@
 #include <unordered_map>
 
 #include "cgltf.h"
+#include "mikktspace.h"
 
 namespace pt {
 
@@ -224,34 +225,56 @@ void compute_normals_if_missing(Mesh& m, bool had_normals) {
     if (length2(m.nrm[v]) < 1e-12f) m.nrm[v] = normalize(acc[weld[v]]);
 }
 
+// MikkTSpace (the tangent basis Blender, Unreal, Unity and Toolbag use), so baked normal maps match
+// engines exactly. Mikk assigns tangents per triangle corner; vertices whose corners disagree are split.
 void compute_tangents(Mesh& m) {
+  struct Data { Mesh* m; std::vector<vec4> corner; };
+  Data d{&m, std::vector<vec4>(m.idx.size(), vec4(1, 0, 0, 1))};
+  SMikkTSpaceInterface in = {};
+  in.m_getNumFaces = [](const SMikkTSpaceContext* c) { return (int)((Data*)c->m_pUserData)->m->tri_count(); };
+  in.m_getNumVerticesOfFace = [](const SMikkTSpaceContext*, const int) { return 3; };
+  in.m_getPosition = [](const SMikkTSpaceContext* c, float out[], const int f, const int v) {
+    const Mesh& mm = *((Data*)c->m_pUserData)->m;
+    vec3 p = mm.pos[mm.idx[f * 3 + v]];
+    out[0] = p.x; out[1] = p.y; out[2] = p.z;
+  };
+  in.m_getNormal = [](const SMikkTSpaceContext* c, float out[], const int f, const int v) {
+    const Mesh& mm = *((Data*)c->m_pUserData)->m;
+    vec3 n = mm.nrm[mm.idx[f * 3 + v]];
+    out[0] = n.x; out[1] = n.y; out[2] = n.z;
+  };
+  in.m_getTexCoord = [](const SMikkTSpaceContext* c, float out[], const int f, const int v) {
+    const Mesh& mm = *((Data*)c->m_pUserData)->m;
+    vec2 uv = mm.uv[mm.idx[f * 3 + v]];
+    out[0] = uv.x; out[1] = 1.f - uv.y;  // Mikk (like Blender/OpenGL) wants V up
+  };
+  in.m_setTSpaceBasic = [](const SMikkTSpaceContext* c, const float t[], const float sign, const int f, const int v) {
+    ((Data*)c->m_pUserData)->corner[f * 3 + v] = vec4(t[0], t[1], t[2], sign);
+  };
+  SMikkTSpaceContext ctx = {&in, &d};
+  genTangSpaceDefault(&ctx);
+
   size_t nv = m.pos.size();
-  std::vector<vec3> T(nv, vec3(0, 0, 0)), B(nv, vec3(0, 0, 0));
-  for (size_t t = 0; t < m.tri_count(); t++) {
-    uint32_t i0 = m.idx[t * 3], i1 = m.idx[t * 3 + 1], i2 = m.idx[t * 3 + 2];
-    vec3 e1 = m.pos[i1] - m.pos[i0], e2 = m.pos[i2] - m.pos[i0];
-    // tangent space uses V-up (Blender/OpenGL): v' = 1 - v
-    float du1 = m.uv[i1].x - m.uv[i0].x, dv1 = -(m.uv[i1].y - m.uv[i0].y);
-    float du2 = m.uv[i2].x - m.uv[i0].x, dv2 = -(m.uv[i2].y - m.uv[i0].y);
-    float det = du1 * dv2 - du2 * dv1;
-    if (std::fabs(det) < 1e-20f) continue;
-    float r = 1.0f / det;
-    vec3 sdir = (e1 * dv2 - e2 * dv1) * r;
-    vec3 tdir = (e2 * du1 - e1 * du2) * r;
-    // weight by triangle area (in 3D) so tiny slivers don't dominate
-    float w = length(cross(e1, e2));
-    sdir = normalize(sdir) * w;
-    tdir = normalize(tdir) * w;
-    for (uint32_t i : {i0, i1, i2}) { T[i] += sdir; B[i] += tdir; }
-  }
-  m.tan.resize(nv);
-  for (size_t v = 0; v < nv; v++) {
-    vec3 n = m.nrm[v];
-    vec3 t = T[v] - n * dot(n, T[v]);
-    if (length2(t) < 1e-20f) { vec3 bb; onb(n, t, bb); }
-    t = normalize(t);
-    float w = dot(cross(n, t), B[v]) < 0.0f ? -1.0f : 1.0f;
-    m.tan[v] = vec4(t, w);
+  m.tan.assign(nv, vec4(0, 0, 0, 0));
+  std::vector<uint8_t> assigned(nv, 0);
+  std::unordered_map<uint32_t, std::vector<uint32_t>> splits;  // original vertex -> its copies
+  auto same = [](vec4 a, vec4 b) { return a.w == b.w && dot(a.xyz(), b.xyz()) > 0.9999f; };
+  for (size_t k = 0; k < m.idx.size(); k++) {
+    uint32_t v = m.idx[k];
+    vec4 t = d.corner[k];
+    if (!assigned[v]) { m.tan[v] = t; assigned[v] = 1; continue; }
+    if (same(m.tan[v], t)) continue;
+    uint32_t found = UINT32_MAX;
+    for (uint32_t c : splits[v]) if (same(m.tan[c], t)) { found = c; break; }
+    if (found == UINT32_MAX) {
+      found = (uint32_t)m.pos.size();
+      m.pos.push_back(m.pos[v]);
+      m.nrm.push_back(m.nrm[v]);
+      m.uv.push_back(m.uv[v]);
+      m.tan.push_back(t);
+      splits[v].push_back(found);
+    }
+    m.idx[k] = found;
   }
 }
 
