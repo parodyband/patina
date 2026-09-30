@@ -28,12 +28,13 @@ Substance Painter is built for people with a mouse. Agents need:
 | Engine-ready output | Export presets for Blender, glTF (ORM), Unreal, Unity HDRP/URP and Godot, plus a textured `.glb` and a Blender bridge that builds the materials. |
 
 <p>
-<img src="docs/images/barrel.png" width="49%" alt="barrel with two texture sets">
+<img src="docs/images/barrel.png" width="49%" alt="stylized barrel with three texture sets">
 <img src="docs/images/crate_blender.png" width="24%" alt="Patina textures rendered in Blender Cycles">
 <img src="docs/images/panel_mask.png" width="24%" alt="mask debug view">
 </p>
 
-*Left: two texture sets on one mesh (painted metal with rust, rusted rings, label band). Middle: Patina's
+*Left: three texture sets on one mesh (oak staves and heads with UV-space grain along every board, forged iron
+hoops with rust), lit by the built-in studio HDRI. Middle: Patina's
 export rendered in Blender Cycles through the bridge. Right: `mode=mask:<layer>` shows exactly where a layer applies.*
 
 ![16 smart materials rendered by one variants call](docs/images/gallery.png)
@@ -47,7 +48,7 @@ Measured on an M5 Pro (6P + 12E cores) at 2048² per texture set:
 | Asset | Tris | Cold bake (AO, thickness, curvature) | Layer eval | 4-view preview | Full export |
 |-------|------|--------------------------------------|------------|----------------|-------------|
 | Suzanne | 15.7k | 0.86 s | 0.15 s | 22 ms | 0.27 s |
-| Barrel (2 texture sets) | 6k | 1.25 s | 0.8 s | 45 ms | ~2 s |
+| Barrel, previous 6k-tri asset (2 texture sets) | 6k | 1.25 s | 0.8 s | 45 ms | ~2 s |
 
 - Previews evaluate at 1024² by default: about 0.1–0.4 s per edit-render loop.
 - Bakes are cached in memory and on disk (`.patina/`).

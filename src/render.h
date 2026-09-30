@@ -28,6 +28,9 @@ struct RenderOptions {
   int columns = 0;
   std::string title;
   float exposure = 1.f;
+  std::string environment = "studio";  // built-in HDRI | "procedural" (analytic studio) | path to an .hdr
+  float env_rotation = 0.f;            // degrees around +Y
+  float env_intensity = 1.f;
 };
 Json render_modes();
 

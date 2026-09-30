@@ -71,6 +71,7 @@ struct Ctx {
   size_t n = 0;
   vec3 center, bmin, bsize;
   float ext = 1;
+  float uv_to_object = -1;  // object-size units per UV unit in this texture set (lazy, see uv_scale)
   Stack* stack = nullptr;
   std::unordered_map<std::string, std::vector<float>>* masks = nullptr;
   std::vector<std::string>* warnings = nullptr;
@@ -340,7 +341,21 @@ struct NoiseP {
   float jitter = 1, width = 0.08f, size = 0.35f;
   vec3 axis{0, 1, 0};  // rings
   bool world = false;
+  bool uv = false;  // x = u, y = v, z = per-island offset (boards/planks laid out along V)
+  float uvk = 1;     // uv space: UV units -> object-size units, so `scale` means the same in every space
 };
+
+// Object-size units per UV unit, from the texel footprint of this texture set's samples.
+static float uv_scale(Ctx& c) {
+  if (c.uv_to_object < 0) {
+    double sum = 0;
+    size_t n = 0;
+    for (size_t i = 0; i < c.n; i++)
+      if (c.ss->interior[i]) { sum += std::sqrt((double)c.ss->len_u[i] * c.ss->len_v[i]); n++; }
+    c.uv_to_object = n ? (float)(sum / n * c.ss->res / c.ext) : 1.f;
+  }
+  return c.uv_to_object;
+}
 
 static NoiseP parse_noise(const Json& s, const char* def_kind, float def_scale, Ctx& c) {
   NoiseP P;
@@ -370,7 +385,11 @@ static NoiseP parse_noise(const Json& s, const char* def_kind, float def_scale, 
   P.jitter = s.numf("jitter", 1.f);
   P.width = s.numf("width", 0.08f);
   P.size = s.numf("size", 0.35f);
-  P.world = s.str("space", "object") == "world";
+  std::string space = s.str("space", "object");
+  if (space != "object" && space != "world" && space != "uv") c.error("space must be object, world or uv");
+  P.world = space == "world";
+  P.uv = space == "uv";
+  if (P.uv) P.uvk = uv_scale(c);
   P.stretch = vmax(P.stretch, vec3(1e-3f));
   static const char* kinds[] = {"fbm", "perlin", "value", "ridged", "turbulence", "cells", "voronoi", "cracks", "dots", "white", "rings"};
   bool ok = false;
@@ -385,8 +404,17 @@ static NoiseP parse_noise(const Json& s, const char* def_kind, float def_scale, 
 }
 
 static inline vec3 noise_domain(const NoiseP& P, const Ctx& c, size_t i) {
-  vec3 p = P.world ? c.ss->pos[i] : (c.ss->pos[i] - c.center) / c.ext;
-  p = (p + P.offset) * P.scale / P.stretch;
+  vec3 p;
+  if (P.uv) {
+    p = (vec3(c.ss->uv[i].x, c.ss->uv[i].y, 0.f) * P.uvk + P.offset) * P.scale / P.stretch;
+    // every UV island (board) gets its own slice of the noise; z in 0.5..3.5 keeps rings around
+    // "up" (= V) reading as straight grain rather than the ring centers
+    uint32_t h = hash_u32((uint32_t)c.mesh->tri_island[c.ss->tri[i]] * 7919u + P.seed);
+    p += vec3(hash_float(h) * 97.f, hash_float(h ^ 0x68bc21ebu) * 97.f, 0.5f + 3.f * hash_float(h ^ 0x2f693b52u));
+  } else {
+    p = P.world ? c.ss->pos[i] : (c.ss->pos[i] - c.center) / c.ext;
+    p = (p + P.offset) * P.scale / P.stretch;
+  }
   if (P.warp != 0.f) p += fbm3_vec(p * 0.5f, 3, P.seed ^ 0x5bd1e995u) * P.warp;
   return p;
 }
@@ -761,10 +789,13 @@ static void f_grunge(const Json& s, Ctx& c, float* out) {
     });
   } else if (style == "speckle") {
     par(c.n, [&](size_t i) {
+      // small round specks of varying size (not grid cells, which read as pixels/cubes up close)
       vec3 p = P(c.ss->pos[i]) * 20.f;
-      float v = hash_float(hash_u32((uint32_t)(int)std::floor(p.x) * 73856093u ^ (uint32_t)(int)std::floor(p.y) * 19349663u ^
-                                    (uint32_t)(int)std::floor(p.z) * 83492791u ^ seed));
-      out[i] = v < amount * 0.5f ? 1.f : 0.f;
+      p += fbm3_vec(p * 0.7f, 2, seed) * 0.25f;
+      Worley w = worley3(p, 1.f, seed + 8);
+      float r = 0.18f + 0.22f * hash_float(w.id ^ 0x27d4eb2fu);
+      float keep = hash_float(w.id) < amount ? 1.f : 0.f;
+      out[i] = keep * (1.f - smoothstep(r * 0.6f, r, w.f1));
     });
   } else if (style == "rust") {
     par(c.n, [&](size_t i) {
@@ -997,16 +1028,17 @@ static void f_combine(const Json& s, Ctx& c, float* out) {
 static const std::vector<FieldDef>& field_defs() {
   static const std::vector<FieldDef> defs = {
       {"constant", "basic", "A constant value.", {{"value", "1", "value"}}, f_constant},
-      {"noise", "procedural", "3D procedural noise sampled at the surface position (seamless across UV seams).",
+      {"noise", "procedural", "3D procedural noise sampled at the surface position (seamless across UV seams), or in UV space per island.",
        {{"noise", "\"fbm\"", "fbm | perlin | value | ridged | turbulence | cells | voronoi | cracks | dots | white | rings (wood growth rings around `axis`)"},
-        {"scale", "4", "features per object size (object space) or per unit (world space)"},
+        {"scale", "4", "features per object size (object and uv space) or per unit (world space)"},
         {"octaves", "5", "fbm/ridged/turbulence/value detail levels"}, {"lacunarity", "2", "frequency multiplier per octave"},
         {"gain", "0.5", "amplitude multiplier per octave"}, {"seed", "0", "integer seed"},
         {"stretch", "[1,1,1]", "feature size multiplier per axis, e.g. [1,6,1] = streaks along Y; or \"up\" (12x along an axis)"},
         {"axis", "\"up\"", "rings: the grain axis"},
         {"warp", "0", "domain warp strength (0..2)"}, {"offset", "[0,0,0]", "domain offset"},
         {"jitter", "1", "cells/voronoi/cracks/dots randomness"}, {"width", "0.08", "cracks line width"},
-        {"size", "0.35", "dots radius (in cells)"}, {"space", "\"object\"", "object (normalized size) | world (mesh units)"}},
+        {"size", "0.35", "dots radius (in cells)"},
+        {"space", "\"object\"", "object (normalized size) | world (mesh units) | uv (x=u, y=v, each UV island offset: wood grain along V)"}},
        f_noise},
       {"curvature", "mesh", "Baked curvature. convex = outer edges, concave = creases.", {{"mode", "\"convex\"", "convex | concave | both | raw (0.5 = flat)"}}, f_curvature},
       {"ao", "mesh", "Baked ambient occlusion (1 = open, 0 = occluded).", {}, f_ao},
@@ -1204,6 +1236,12 @@ static bool eval_mask_stack(const Json& mask, Ctx& c, std::vector<float>& out) {
     if (e.is_object() && !e.boolean("enabled", true)) continue;
     PathScope ps(c, strf(".mask[%zu]", k));
     eval_field(e, c, f.data());
+    if (const Json* r = e.is_object() ? e.find("range") : nullptr) {  // same remap as for channels, then 0..1
+      if (!r->is_array() || r->size() != 2) c.error("range must be [low, high]");
+      float lo = (*r)[0].as_float(0), hi = (*r)[1].as_float(1);
+      float* fv = f.data();
+      par(c.n, [&](size_t i) { fv[i] = saturate(lo + fv[i] * (hi - lo)); });
+    }
     std::string mode = e.is_object() ? e.str("blend", "normal") : "normal";
     float op = e.is_object() ? e.numf("opacity", 1.f) : 1.f;
     BlendMode bm = blend_or_fail(mode, c);

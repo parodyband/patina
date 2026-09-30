@@ -15,7 +15,7 @@ Options (after `--`):
 
 Assets (all +Y up in glTF, modifiers applied, split/custom normals, TEXCOORD_0, materials):
     crate.glb    beveled paneled box, convex + concave edges       material: Crate
-    barrel.glb   bulged barrel with raised bands and inset lids     materials: BarrelBody, BarrelRings
+    barrel.glb   stylized coopered barrel: 14 staves, board heads, hoops  materials: Staves, Heads, Hoops
     hammer.glb   two objects: Handle + Head                         materials: Wood, Steel
     suzanne.glb  Suzanne, subdivision level 2 applied, smooth       material: Skin
     panel.glb    sci-fi panel with recessed grooves + bolts         material: Panel
@@ -27,8 +27,10 @@ UVs:
     then packed (rotation on, margin 0.006 of UV space). The result is rasterised; if any
     texel is covered twice inside one material the whole thing is redone with a lower angle
     limit (66 -> 55 -> 45 -> 35).
-  * lathe meshes (barrel, handle) get analytic cylindrical UVs (arc length x profile length,
-    planar lids), which pack far better than Smart UV's thin annuli, then are packed the same way.
+  * lathe meshes (barrel hoops, hammer handle) get analytic cylindrical UVs (arc length x profile
+    length, planar lids), which pack far better than Smart UV's thin annuli, then are packed the same way.
+  * wood boards (barrel staves and heads) are unfolded lengthwise along V and packed without
+    rotation, so UV-space grain ("space": "uv" noise stretched "up") follows every board.
 
 The script exits with a nonzero status if anything fails (Blender itself would exit 0 on an
 uncaught Python exception).
@@ -160,9 +162,9 @@ def _select_faces(bm, me, mi):
     bmesh.update_edit_mesh(me)
 
 
-def _pack_selected():
+def _pack_selected(rotate=True):
     bpy.ops.uv.select_all(action="SELECT")
-    bpy.ops.uv.pack_islands(rotate=True, rotate_method="ANY", scale=True,
+    bpy.ops.uv.pack_islands(rotate=rotate, rotate_method="ANY", scale=True,
                             margin_method="FRACTION", margin=UV_PACK_MARGIN,
                             shape_method="CONCAVE")
 
@@ -218,7 +220,7 @@ def unwrap(obj, uv_mode=None, check=None):
                     bpy.ops.uv.unwrap(method="MINIMUM_STRETCH", fill_holes=True,
                                       correct_aspect=True, margin_method="FRACTION",
                                       margin=UV_PACK_MARGIN, iterations=10)
-                _pack_selected()
+                _pack_selected(rotate=not obj.get("patina_uv_no_rotate"))
             _select_faces(bm, me, -1)          # deselect everything
         finally:
             bpy.ops.object.mode_set(mode="OBJECT")
@@ -449,48 +451,156 @@ def build_crate():
 
 
 def build_barrel():
-    body = make_material("BarrelBody", (0.42, 0.26, 0.13), 0.0, 0.65)
-    rings = make_material("BarrelRings", (0.35, 0.35, 0.37), 1.0, 0.45)
-    H, R_END, R_MID, BAND, RIM, LID = 1.2, 0.30, 0.345, 0.012, 0.028, 0.02
-    bands = [(0.09, 0.16), (0.36, 0.42), (0.78, 0.84), (1.04, 1.11)]
+    """Chunky, stylized coopered barrel: 14 thick staves with slightly uneven widths and ends, a
+    strong bulge, board-built heads set into the stave ends and proud iron hoops, all with big
+    rounded bevels. Wood UVs keep the grain along V: every stave face and head board is unfolded
+    lengthwise along V and packed without rotation, so UV-space noise ("space": "uv", stretched
+    along "up") runs along each board."""
+    import random
+    rng = random.Random(7)                            # fixed: the asset is reproducible
+    staves_m = make_material("Staves", (0.45, 0.29, 0.15), 0.0, 0.6)
+    heads_m = make_material("Heads", (0.50, 0.34, 0.18), 0.0, 0.6)
+    hoops_m = make_material("Hoops", (0.30, 0.30, 0.31), 1.0, 0.5)
+    H, R_END, R_BILGE = 0.85, 0.25, 0.33
+    N, T, GAP = 14, 0.034, 0.003                      # staves, thickness, joint gap
+    CHIME, HEAD_T, CROZE = 0.045, 0.03, 0.006         # stave ends above the heads, head thickness
+    ROWS = 24
 
     def r_at(z):
         t = (z - H / 2) / (H / 2)
-        return R_END + (R_MID - R_END) * (1.0 - t * t)
+        return R_END + (R_BILGE - R_END) * (1.0 - t * t)
 
-    # z samples along the side: regular spacing + band boundaries/midpoints
-    zs = {round(i * H / 30, 5) for i in range(31)}
-    for z0, z1 in bands:
-        zs = {z for z in zs if not (z0 - 0.01 < z < z1 + 0.01)}
-        zs.update({z0, z1, round((z0 + z1) / 2, 5)})
-    zs = sorted(zs)
+    def across(pts):                                  # arc positions across a section, centred
+        acc, out = 0.0, [0.0]
+        for (a0, r0), (a1, r1) in zip(pts, pts[1:]):
+            acc += math.hypot(r1 * math.cos(a1) - r0 * math.cos(a0), r1 * math.sin(a1) - r0 * math.sin(a0))
+            out.append(acc)
+        return [x - acc / 2 for x in out]
 
-    def band_of(z):
-        for z0, z1 in bands:
-            if z0 - 1e-6 <= z <= z1 + 1e-6:
-                return (z0, z1)
-        return None
-
-    prof = [(0.0, LID, 0), (r_at(0) - RIM, LID, 0), (r_at(0) - RIM, 0.0, 0)]  # bottom lid + rim
-    for z in zs:
-        b = band_of(z)
-        if b and abs(z - b[0]) < 1e-6:            # step out onto the band
-            prof.append((r_at(z), z, 1))
-            prof.append((r_at(z) + BAND, z, 1))
-        elif b and abs(z - b[1]) < 1e-6:          # step back down to the body
-            prof.append((r_at(z) + BAND, z, 1))
-            prof.append((r_at(z), z, 0))
-        elif b:
-            prof.append((r_at(z) + BAND, z, 1))
-        else:
-            prof.append((r_at(z), z, 0))
-    prof += [(r_at(H) - RIM, H, 0), (r_at(H) - RIM, H - LID, 0), (0.0, H - LID, 0)]  # top rim + lid
+    # ---- staves: one island per face, lengthwise along v
     bm = bmesh.new()
-    revolve(bm, prof, 64, u_splits=2)
-    obj = object_from_bmesh("Barrel", bm, [body, rings])
-    obj["patina_analytic_uv"] = True
-    smooth_by_angle(obj, 30.0)                 # smooth staves, sharp band steps and rims
-    return [obj]
+    uvl = bm.loops.layers.uv.new("UVMap")
+
+    def face(verts, uvs):
+        f = bm.faces.new(verts)
+        for loop, uv in zip(f.loops, uvs):
+            loop[uvl].uv = uv
+        return f
+
+    widths = [1.0 + rng.uniform(-0.18, 0.18) for _ in range(N)]
+    bounds = [0.0]
+    for w_ in widths:
+        bounds.append(bounds[-1] + w_)
+    bounds = [2 * math.pi * b / bounds[-1] for b in bounds]
+    half_gap = GAP / R_BILGE / 2
+    for i in range(N):
+        t0, t1 = bounds[i] + half_gap, bounds[i + 1] - half_gap
+        z_lo, z_hi = rng.uniform(-0.004, 0.006), H + rng.uniform(-0.006, 0.004)   # uneven ends
+        dr = rng.uniform(-0.003, 0.003)               # staves not quite flush
+        zs = [z_lo + (z_hi - z_lo) * k / ROWS for k in range(ROWS + 1)]
+
+        def ro(z):
+            return r_at(z) + dr
+
+        def ri(z):
+            return r_at(z) + dr - T
+
+        def v_along(r_fn):
+            out, acc = [0.0], 0.0
+            for a, b in zip(zs, zs[1:]):
+                acc += math.hypot(r_fn(b) - r_fn(a), b - a)
+                out.append(acc)
+            return out
+
+        v_out, v_in = v_along(ro), v_along(ri)
+        outer = lambda z: [(t0 + (t1 - t0) * k / 4, ro(z)) for k in range(5)]
+        inner = lambda z: [(t0 + (t1 - t0) * k / 3, ri(z)) for k in range(4)]
+
+        def ring(pts, z):
+            return [bm.verts.new((r * math.cos(a), r * math.sin(a), z)) for a, r in pts]
+
+        O = [ring(outer(z), z) for z in zs]
+        I = [ring(inner(z), z) for z in zs]
+        for k in range(ROWS):
+            ua, ub = across(outer(zs[k])), across(outer(zs[k + 1]))
+            for c in range(4):
+                face((O[k][c], O[k][c + 1], O[k + 1][c + 1], O[k + 1][c]),
+                     [(ua[c], v_out[k]), (ua[c + 1], v_out[k]), (ub[c + 1], v_out[k + 1]), (ub[c], v_out[k + 1])])
+            ia, ib = across(inner(zs[k])), across(inner(zs[k + 1]))
+            for c in range(3):                        # mirrored in u so the island is not flipped
+                face((I[k][c + 1], I[k][c], I[k + 1][c], I[k + 1][c + 1]),
+                     [(-ia[c + 1], v_in[k]), (-ia[c], v_in[k]), (-ib[c], v_in[k + 1]), (-ib[c + 1], v_in[k + 1])])
+            face((I[k][0], O[k][0], O[k + 1][0], I[k + 1][0]),          # joint faces (radial)
+                 [(0, v_out[k]), (T, v_out[k]), (T, v_out[k + 1]), (0, v_out[k + 1])])
+            face((O[k][-1], I[k][-1], I[k + 1][-1], O[k + 1][-1]),
+                 [(0, v_out[k]), (T, v_out[k]), (T, v_out[k + 1]), (0, v_out[k + 1])])
+        for k, flip in ((0, True), (ROWS, False)):    # end grain
+            loop_verts = O[k] + I[k][::-1]
+            f = bm.faces.new(loop_verts[::-1] if flip else loop_verts)
+            for loop in f.loops:
+                co = loop.vert.co
+                a = (math.atan2(co.y, co.x) - t0 + math.pi) % (2 * math.pi) - math.pi   # no wrap at +-180 deg
+                loop[uvl].uv = (a * R_END, math.hypot(co.x, co.y))
+    staves = object_from_bmesh("Staves", bm, [staves_m])
+    staves["patina_analytic_uv"] = True
+    staves["patina_uv_no_rotate"] = True
+    smooth_by_angle(staves, 30.0)
+    add_bevel(staves, width=0.006, segments=3)        # big rounded edges on every stave
+    apply_modifiers(staves)
+
+    # ---- heads: 4 thick boards side by side across X, grain along Y (= v)
+    bm = bmesh.new()
+    uvl = bm.loops.layers.uv.new("UVMap")
+    board_w = [0.22, 0.28, 0.28, 0.22]                # fractions of the diameter (sum 1)
+    for z0 in (CHIME, H - CHIME - HEAD_T):
+        R = r_at(z0 + HEAD_T / 2) - T + CROZE         # set into the croze of the staves
+        x = -R
+        for wf in board_w:
+            xa, xb = x + 0.0015, x + wf * 2 * R - 0.0015
+            x += wf * 2 * R
+            xs = [xa + (xb - xa) * k / 12 for k in range(13)]
+            top = [(xx, math.sqrt(max(R * R - xx * xx, 0.0))) for xx in xs]
+            outline = top + [(xx, -yy) for xx, yy in reversed(top)]
+            lo = [bm.verts.new((xx, yy, z0)) for xx, yy in outline]
+            hi = [bm.verts.new((xx, yy, z0 + HEAD_T)) for xx, yy in outline]
+            for verts, flip in ((hi, True), (lo, False)):
+                f = bm.faces.new(verts[::-1] if flip else verts)
+                for loop in f.loops:
+                    co = loop.vert.co
+                    loop[uvl].uv = ((co.x if flip else -co.x), co.y)
+            acc = 0.0
+            for k in range(len(outline)):             # board edges
+                j = (k + 1) % len(outline)
+                seg = math.hypot(outline[j][0] - outline[k][0], outline[j][1] - outline[k][1])
+                face((lo[k], lo[j], hi[j], hi[k]), [(acc, 0), (acc + seg, 0), (acc + seg, HEAD_T), (acc, HEAD_T)])
+                acc += seg
+    heads = object_from_bmesh("Heads", bm, [heads_m])
+    heads["patina_analytic_uv"] = True
+    heads["patina_uv_no_rotate"] = True
+    add_bevel(heads, width=0.006, segments=3)         # rounded board edges
+    apply_modifiers(heads)
+
+    # ---- hoops: thick iron bands standing proud of the staves (two at the chimes, two quarter hoops)
+    bm = bmesh.new()
+    HT, EPS = 0.009, 0.0015
+    for z0, z1 in ((0.05, 0.11), (0.23, 0.28), (H - 0.28, H - 0.23), (H - 0.11, H - 0.05)):
+        zz = [z0 + (z1 - z0) * k / 4 for k in range(5)]
+        prof = [(r_at(z) + EPS + HT, z, 0) for z in zz] + [(r_at(z) + EPS, z, 0) for z in reversed(zz)]
+        prof.append(prof[0])                          # close the band's cross-section
+        revolve(bm, prof, 96, u_splits=4)
+    hoops = object_from_bmesh("Hoops", bm, [hoops_m])
+    hoops["patina_analytic_uv"] = True
+    bpy.context.view_layer.objects.active = hoops
+    bpy.ops.object.select_all(action="DESELECT")
+    hoops.select_set(True)
+    bpy.ops.object.mode_set(mode="EDIT")
+    bpy.ops.mesh.select_all(action="SELECT")
+    bpy.ops.mesh.remove_doubles(threshold=1e-6)       # weld the closing seam of each band
+    bpy.ops.object.mode_set(mode="OBJECT")
+    smooth_by_angle(hoops, 30.0)
+    add_bevel(hoops, width=0.003, segments=3)         # rounded band edges
+    apply_modifiers(hoops)
+    return [staves, heads, hoops]
 
 
 def build_hammer():

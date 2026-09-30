@@ -78,6 +78,15 @@ r=$("$BIN" batch --do render "$W/crate.patina.json" "$W/barrel.patina.json" "$W/
 [ "$r" = "3" ] || fail "batch"
 ok "batch render x3"
 
+# example project: UV-space wood grain, mask range, all three lighting environments
+[ "$("$BIN" validate examples/projects/barrel.patina.json --compact | json "d['ok']")" = "True" ] || fail "validate barrel example"
+for env in studio procedural third_party/hdri/studio_small_09_1k.hdr; do
+  "$BIN" render examples/projects/barrel.patina.json --views iso --size 128 --resolution 256 --environment "$env"     --out "$W/barrel_env.png" --compact >/dev/null || fail "render environment $env"
+done
+set +e; out=$("$BIN" render examples/projects/barrel.patina.json --size 64 --resolution 128 --environment nope.hdr --out "$W/x.png" --compact); set -e
+echo "$out" | grep -q "not found" || fail "missing environment must be reported"
+ok "barrel example: uv-space wood, studio/procedural/.hdr environments"
+
 # MCP
 "$PY" tests/mcp_smoke.py "$BIN" "$W/mcp" >/dev/null || fail "mcp smoke"
 ok "mcp smoke (concurrent calls)"

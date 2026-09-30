@@ -5,7 +5,7 @@
         [--dir examples/_bridge_test] [--engines CYCLES,EEVEE] [--keep]
 
 Generates fake Patina texture exports (UV-space procedural PNGs, 16-bit height) + manifests
-for crate.glb (separate maps, OpenGL normal) and barrel.glb (two texture sets, packed ORM,
+for crate.glb (separate maps, OpenGL normal) and barrel.glb (two of its texture sets, packed ORM,
 DirectX normal), runs `apply` (with preview renders) and `export` through a child Blender,
 checks exit codes / PATINA_JSON payloads / written files, and exercises the error paths.
 Exits 1 if any check fails. Test outputs are deleted unless --keep is given.
@@ -131,10 +131,10 @@ def main():
                  "normal": "tex/T_normal_dx.png", "height": "tex/T_height.png"}
     m2 = {"patina": 1, "preset": "packed", "mesh": os.path.abspath(barrel),
           "texture_sets": {
-              "BarrelBody": {"material": "BarrelBody", "files": orm_files,
+              "Staves": {"material": "Staves", "files": orm_files,
                              "normal_format": "directx", "height_depth": 0.004,
                              "normal_includes_height": False},
-              "BarrelRings": {"material": "BarrelRings",
+              "Hoops": {"material": "Hoops",
                               "files": {"basecolor": "tex/T_basecolor.png",
                                         "orm": "tex/T_orm.png"}}}}
     for name, m in (("manifest.json", m1), ("manifest_orm.json", m2)):
@@ -160,16 +160,16 @@ def main():
             px = np.array(img.pixels[:]).reshape(-1, img.channels)[:, :3]
             check(px.std() > 0.03, "render is not flat (std %.3f, mean %.3f)" % (px.std(), px.mean()))
 
-    print("apply: barrel, two texture sets, packed ORM + DirectX normal, --blend input")
+    print("apply: barrel, two of its texture sets, packed ORM + DirectX normal, --blend input")
     r = run_bridge(["apply", "--manifest", os.path.join(d, "manifest_orm.json"),
                     "--out", os.path.join(d, "barrel.blend"),
                     "--render", os.path.join(d, "barrel.png"), "--samples", "16",
                     "--res", str(a.res), "--pack"])
-    check(r.get("ok") is True and set(r.get("texture_sets", {})) == {"BarrelBody", "BarrelRings"},
+    check(r.get("ok") is True and set(r.get("texture_sets", {})) == {"Staves", "Hoops"},
           "both texture sets applied (mesh taken from manifest)")
-    check("bump" in r.get("texture_sets", {}).get("BarrelBody", {}).get("height", ""),
+    check("bump" in r.get("texture_sets", {}).get("Staves", {}).get("height", ""),
           "normal_includes_height=false -> bump chained: %s"
-          % r.get("texture_sets", {}).get("BarrelBody", {}).get("height"))
+          % r.get("texture_sets", {}).get("Staves", {}).get("height"))
     r = run_bridge(["apply", "--manifest", os.path.join(d, "manifest.json"),
                     "--blend", os.path.join(d, "crate_cycles.blend"),
                     "--out", os.path.join(d, "crate_again.blend"), "--height", "displace"])

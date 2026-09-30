@@ -102,22 +102,23 @@ static const char* kBuiltinLibrary = R"JSON(
     ]
   },
   "wood": {
-    "description": "Procedural wood: growth rings around the grain axis, fibers along it, per-UV-island tone variation (boards).",
+    "description": "Procedural wood: growth rings around the grain axis, fibers along it, per-UV-island tone variation (boards). space=uv runs the grain along V of every UV island (staves, planks laid out lengthwise).",
     "params": {"light": {"default": "#c0925a", "doc": "early wood"}, "dark": {"default": "#6e4323", "doc": "late wood"},
-               "axis": {"default": "up", "doc": "grain direction: up | right | front"},
+               "axis": {"default": "up", "doc": "grain direction: up | right | front (in uv space: up = along V)"},
+               "space": {"default": "object", "doc": "object | uv (grain follows each UV island along V)"},
                "rings": {"default": 14, "doc": "growth rings per object size"}, "roughness": {"default": 0.55}, "seed": {"default": 0}},
     "layers": [
       {"id": "rings", "channels": {
-          "basecolor": {"type": "noise", "noise": "rings", "axis": "${axis}", "scale": "${rings}", "warp": 0.35, "offset": [0.31, 0.0, 0.17], "seed": "${seed}",
+          "basecolor": {"type": "noise", "space": "${space}", "noise": "rings", "axis": "${axis}", "stretch": "${axis}", "scale": "${rings}", "warp": 0.35, "offset": [0.31, 0.0, 0.17], "seed": "${seed}",
                         "gradient": [[0, "${light}"], [0.6, "${light}"], [1, "${dark}"]]},
           "metallic": 0,
-          "roughness": {"type": "noise", "noise": "rings", "axis": "${axis}", "scale": "${rings}", "warp": 0.35, "offset": [0.31, 0.0, 0.17], "seed": "${seed}",
+          "roughness": {"type": "noise", "space": "${space}", "noise": "rings", "axis": "${axis}", "stretch": "${axis}", "scale": "${rings}", "warp": 0.35, "offset": [0.31, 0.0, 0.17], "seed": "${seed}",
                         "range": ["${roughness-0.06}", "${roughness+0.08}"]},
-          "height": {"type": "noise", "noise": "rings", "axis": "${axis}", "scale": "${rings}", "warp": 0.35, "offset": [0.31, 0.0, 0.17], "seed": "${seed}",
+          "height": {"type": "noise", "space": "${space}", "noise": "rings", "axis": "${axis}", "stretch": "${axis}", "scale": "${rings}", "warp": 0.35, "offset": [0.31, 0.0, 0.17], "seed": "${seed}",
                      "range": [0.0, -0.04]}}},
       {"id": "fibers", "opacity": 0.45, "blend": "multiply", "channels": {
-          "basecolor": {"type": "noise", "noise": "fbm", "scale": 90, "stretch": "${axis}", "octaves": 3, "seed": "${seed+2}", "gradient": ["#9c8c7a", "#ffffff"]},
-          "height": {"type": "noise", "noise": "ridged", "scale": 120, "stretch": "${axis}", "octaves": 2, "seed": "${seed+4}", "range": [-0.02, 0.0]}},
+          "basecolor": {"type": "noise", "space": "${space}", "noise": "fbm", "scale": 90, "stretch": "${axis}", "octaves": 3, "seed": "${seed+2}", "gradient": ["#9c8c7a", "#ffffff"]},
+          "height": {"type": "noise", "space": "${space}", "noise": "ridged", "scale": 120, "stretch": "${axis}", "octaves": 2, "seed": "${seed+4}", "range": [-0.02, 0.0]}},
         "blend_modes": {"height": "add"}},
       {"id": "boards", "opacity": 0.35, "blend": "multiply", "channels": {"basecolor": {"type": "island_random", "seed": "${seed+3}", "gradient": ["#c9b8a6", "#ffffff"]}}}
     ]

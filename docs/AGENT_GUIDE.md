@@ -29,7 +29,8 @@ Layers are listed **bottom to top**: later layers paint over earlier ones.
 4. `render(project)`: look at the result. It is fast (~0.1–0.5 s), so do this after every meaningful edit.
    - Debug where a layer applies with `mode="mask:<layer_id>"`.
    - Check height work with `mode="clay"`.
-   - Get close-ups with `views=[{"azimuth":30,"elevation":10,"zoom":3,"target":[0.5,0.9,0.5]}]`.
+   - Get close-ups with `views=[{"azimuth":30,"elevation":10,"zoom":3,"target":[0.5,0.9,0.5]}]` and a higher `resolution` (e.g. 2048): fine grain, rust and edge wear only read up close.
+   - Lighting is a studio HDRI (`environment="studio"`). Turn it with `env_rotation` to move reflections across metal, or pass a path to your own equirectangular `.hdr`.
 5. `variants(project, variants=[...])`: when unsure, render 2–6 alternatives in one call, then apply the best with `edit`.
 6. `export(project, preset, glb=true)`: writes PNGs plus `manifest.json` (and a textured `.glb`).
 7. `blender(action="apply", project=..., out="x.blend", render="x.png")`: builds Principled BSDF materials.
@@ -44,6 +45,9 @@ Layers are listed **bottom to top**: later layers paint over earlier ones.
 - **Lengths** (radius, size, falloff, depth) are fractions of the object's largest dimension.
 - Set `"space": "world"` on a field to use mesh units instead.
 - **Noise `scale`** is the number of features across the object (object space), so it is size-independent.
+- **UV space** (`"space":"uv"` on a noise field): x = U, y = V, and every UV island gets its own offset. Use it for
+  boards, planks and staves laid out lengthwise along V: grain then follows each board, which 3D noise around one
+  axis cannot do on a barrel or a floor. `scale` still means features per object size.
 - **Directions** are `"up" | "down" | "front" | "back" | "left" | "right"` or `[x,y,z]`.
 
 ## 4. Project file
@@ -206,6 +210,19 @@ A mask is a stack of effects evaluated **bottom to top**, starting from black:
 together with a `sphere` or `box` mask.
 
 **Wear only in raised paint**: `{"type":"stack","channel":"height","levels":[0.05,0.2]}`
+
+**Wood boards/staves with grain along each board** (UV islands laid out lengthwise along V)
+
+```json
+{"id":"oak","type":"smart","material":"wood","params":{"space":"uv","rings":40,"light":"#9c6c40","dark":"#52321b"}}
+```
+
+**Metals: base color is the reflectance.** Keep bare metal bright (`#8a8680`..`#c8c8c8`, metallic 1); a dark
+metallic base renders black. For blackened or painted iron, put a dark non-metal layer (forge scale, paint) on
+top and wear it off at the edges. See `examples/projects/barrel.patina.json`.
+
+**Mask coverage**: `range` remaps a mask effect before blending (clamped to 0..1): `[0.7, 1.8]` covers most of
+the surface, `[-0.5, 1]` leaves gaps.
 
 ## 8. Look before you ship
 

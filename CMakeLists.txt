@@ -38,6 +38,7 @@ add_library(patina_core STATIC
   src/library.cpp
   src/export.cpp
   src/render.cpp
+  src/envmap.cpp
   src/project.cpp
   src/commands.cpp
   src/mcp.cpp
@@ -45,18 +46,22 @@ add_library(patina_core STATIC
 )
 target_include_directories(patina_core PUBLIC src third_party)
 
-# Embed text files as byte arrays (no string-literal size limits; bytes are kept exactly):
-# docs/AGENT_GUIDE.md for `library topic=guide` / `patina guide` and the installed skill, and the
-# Blender bridge so an installed binary can run `blender` without the repo.
+# Embed files as byte arrays (cmake/embed.c, built first): docs/AGENT_GUIDE.md for `library topic=guide`,
+# `patina guide` and the installed skill; the Blender bridge so an installed binary can run `blender`
+# without the repo; the default studio HDRI (CC0, see third_party/hdri/README.txt) for renders.
+add_executable(patina_embed cmake/embed.c)
 function(patina_embed file name)
-  file(READ ${file} hex HEX)
-  string(REGEX REPLACE "([0-9a-f][0-9a-f])" "0x\\1," hex "${hex}")
-  file(WRITE ${CMAKE_BINARY_DIR}/generated/${name}.inc.tmp "${hex}0x00\n")
-  configure_file(${CMAKE_BINARY_DIR}/generated/${name}.inc.tmp ${CMAKE_BINARY_DIR}/generated/${name}.inc COPYONLY)
-  set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${file})
+  set(out ${CMAKE_BINARY_DIR}/generated/${name}.inc)
+  add_custom_command(OUTPUT ${out}
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/generated
+    COMMAND patina_embed ${file} ${out}
+    DEPENDS patina_embed ${file} VERBATIM)
+  target_sources(patina_core PRIVATE ${out})
+  set_source_files_properties(${out} PROPERTIES HEADER_FILE_ONLY TRUE)
 endfunction()
 patina_embed(${CMAKE_SOURCE_DIR}/docs/AGENT_GUIDE.md patina_guide)
 patina_embed(${CMAKE_SOURCE_DIR}/tools/blender/patina_blender.py patina_blender)
+patina_embed(${CMAKE_SOURCE_DIR}/third_party/hdri/studio_small_09_1k.hdr patina_studio_hdri)
 target_include_directories(patina_core PRIVATE ${CMAKE_BINARY_DIR}/generated)
 target_compile_definitions(patina_core PUBLIC PATINA_VERSION="${PROJECT_VERSION}")
 target_link_libraries(patina_core PUBLIC patina_thirdparty)

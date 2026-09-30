@@ -308,6 +308,20 @@ RenderOptions parse_render_options(const Json& a) {
   ro.labels = a.boolean("labels", true);
   ro.columns = a.integer("columns", 0);
   ro.exposure = a.numf("exposure", 1.f);
+  ro.environment = a.str("environment", ro.environment);
+  ro.env_rotation = a.numf("env_rotation", ro.env_rotation);
+  ro.env_intensity = a.numf("env_intensity", ro.env_intensity);
+  return ro;
+}
+
+// Render options from the call, falling back to the project's "render" block (environment, env_rotation,
+// env_intensity, exposure). A project's environment path is relative to the project file.
+static RenderOptions project_render_options(const Project& p, const Json& a) {
+  Json merged = p.doc["render"].is_object() ? p.doc["render"] : Json::object();
+  bool env_from_project = !a.has("environment") && merged.has("environment");
+  for (auto& kv : a.members()) merged.set(kv.first, kv.second);
+  RenderOptions ro = parse_render_options(merged);
+  if (env_from_project && ro.environment != "studio" && ro.environment != "procedural") ro.environment = p.resolve(ro.environment);
   return ro;
 }
 
@@ -321,7 +335,7 @@ std::vector<std::string> extra_maps_for_mode(const std::string& mode) {
 CommandOutput cmd_render(const Json& a) {
   Timer total;
   Project p = load_project_arg(a);
-  RenderOptions ro = parse_render_options(a);
+  RenderOptions ro = project_render_options(p, a);
   int res = a.integer("resolution", std::min(1024, p.resolution()));
   Json bake_stats;
   auto bk = get_bake(p, res, false, &bake_stats);
@@ -385,7 +399,7 @@ CommandOutput cmd_variants(const Json& a) {
   const Json& variants = a["variants"];
   if (!variants.is_array() || variants.size() == 0) fail("variants needs \"variants\": [{\"label\":\"...\",\"ops\":[...]}, ...]");
   if (variants.size() > 16) fail("at most 16 variants per call");
-  RenderOptions ro = parse_render_options(a);
+  RenderOptions ro = project_render_options(base, a);
   if (!a.has("size")) ro.size = 384;
   int res = a.integer("resolution", std::min(1024, base.resolution()));
   auto bk = get_bake(base, res, false, nullptr);
@@ -494,6 +508,12 @@ CommandOutput cmd_library(const Json& a) {
     Json v = Json::array();
     for (auto& n : view_names()) v.push(n);
     j.set("views", v);
+    j.set("view_formats", "comma list of names, \"az:el\" in degrees, or objects {\"azimuth\":30,\"elevation\":15,\"zoom\":4,"
+                          "\"target\":[0.5,0.5,1]} for close-ups (target in bbox 0..1 coordinates; zoom 1 = whole object). "
+                          "Render close-ups with a higher \"resolution\" (texture res) to see fine detail.");
+    j.set("environment", "lighting for lit/clay modes: \"studio\" (default, built-in HDRI), \"procedural\" (analytic studio) or a "
+                         "path to an equirectangular .hdr; env_rotation (degrees around up) moves the reflections, env_intensity and "
+                         "exposure scale it. Set project defaults with {\"render\": {\"environment\": ..., \"env_rotation\": ...}}.");
   }
   if (topic.empty() || topic == "modifiers") {
     Json m = Json::object();
@@ -506,7 +526,8 @@ CommandOutput cmd_library(const Json& a) {
     m.set("threshold", "value or {\"value\":0.5,\"softness\":0.02}");
     m.set("multiply / add", "scalar arithmetic");
     m.set("clamp", "true (default) keeps 0..1");
-    m.set("range", "channel values only: [lo, hi] maps the 0..1 field onto a value range (e.g. roughness [0.3,0.6], height [-0.2,0.2])");
+    m.set("range", "[lo, hi] maps the 0..1 field onto a value range (roughness [0.3,0.6], height [-0.2,0.2]); in masks the result is "
+                   "clamped to 0..1, so [0.6, 1.8] pushes coverage up and [-0.5, 1] opens gaps");
     m.set("gradient", "color channels only: [\"#hex\",...] or [[pos,\"#hex\"],...] maps the field to colors");
     j.set("field_modifiers", m);
   }

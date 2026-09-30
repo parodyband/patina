@@ -1,5 +1,7 @@
 #include "render.h"
 
+#include "envmap.h"
+
 #include <algorithm>
 
 extern "C" int patina_easy_font_print(float x, float y, const char* text, unsigned char color[4], void* vertex_buffer, int vbuf_size);
@@ -136,6 +138,9 @@ struct Lighting {
   vec3 R, U, F;  // camera basis (F = forward)
   vec3 key, rim, fill;
   vec3 key_col{2.9f, 2.8f, 2.65f}, rim_col{1.3f, 1.4f, 1.6f}, fill_col{0.45f, 0.47f, 0.5f};
+  const EnvMap* hdri = nullptr;  // world-space environment; null = analytic studio (env below)
+  float env_cos = 1, env_sin = 0, env_k = 1;
+  vec3 to_env(vec3 d) const { return {d.x * env_cos - d.z * env_sin, d.y, d.x * env_sin + d.z * env_cos}; }
 };
 
 // Studio environment in camera space: dark floor, sharp horizon, gradient sky and several soft boxes
@@ -192,8 +197,14 @@ static inline vec3 shade_pbr(const Lighting& L, vec3 N, vec3 V, vec3 base, float
   vec4 r{rough * c0.x + c1.x, rough * c0.y + c1.y, rough * c0.z + c1.z, rough * c0.w + c1.w};
   float a004 = std::fmin(r.x * r.x, std::exp2(-9.28f * NdotV)) * r.x + r.y;
   float A = a004 * -1.04f + r.z, B = a004 * 1.04f + r.w;
-  vec3 spec_ibl = env(L, Rv, rough) * (F0 * A + vec3(B));
-  vec3 diff_ibl = env(L, N, 1.f) * albedo * 0.9f;
+  vec3 spec_ibl, diff_ibl;
+  if (L.hdri) {
+    spec_ibl = L.hdri->radiance(L.to_env(Rv), rough) * L.env_k * (F0 * A + vec3(B));
+    diff_ibl = L.hdri->irradiance(L.to_env(N)) * L.env_k * albedo;
+  } else {
+    spec_ibl = env(L, Rv, rough) * (F0 * A + vec3(B));
+    diff_ibl = env(L, N, 1.f) * albedo * 0.9f;
+  }
   col += (spec_ibl * (0.5f + 0.5f * ao) + diff_ibl * ao);
   return col;
 }
@@ -319,6 +330,19 @@ RgbImage render_view(const Mesh& m, const BVH& bvh, const std::vector<SetMaps>& 
   L.key = normalize(L.R * -0.55f + L.U * 0.7f - L.F * 0.55f);
   L.rim = normalize(L.R * 0.8f + L.U * 0.35f + L.F * 0.6f);
   L.fill = normalize(L.R * 0.75f - L.U * 0.1f - L.F * 0.6f);
+  std::shared_ptr<const EnvMap> hdri;
+  if (o.environment != "procedural") {
+    hdri = load_environment(o.environment);
+    L.hdri = hdri.get();
+    float rot = o.env_rotation * kPi / 180.f;
+    L.env_cos = std::cos(rot);
+    L.env_sin = std::sin(rot);
+    L.env_k = o.env_intensity;
+    // the environment does most of the lighting; a dimmer key light keeps the shadow shape readable
+    L.key_col = L.key_col * 0.35f;
+    L.rim_col = vec3(0.f);
+    L.fill_col = vec3(0.f);
+  }
 
   std::string mode = o.mode;
   std::string mask_key;
