@@ -11,6 +11,7 @@ namespace pt {
 // Smart materials are layer-stack templates. "${name}" is replaced by a parameter value;
 // "${expr}" may use + - * / and parentheses over numeric params, e.g. "${wear*0.5}" or "${seed+2}".
 // Layers are bottom-to-top. Inner ids are namespaced under the instance id at expansion time.
+// Split into several raw literals: MSVC caps a single string literal at 16 KB.
 static const char* kBuiltinLibrary = R"JSON(
 {
 "smart_materials": {
@@ -121,6 +122,7 @@ static const char* kBuiltinLibrary = R"JSON(
       {"id": "boards", "opacity": 0.35, "blend": "multiply", "channels": {"basecolor": {"type": "island_random", "seed": "${seed+3}", "gradient": ["#c9b8a6", "#ffffff"]}}}
     ]
   },
+)JSON" R"JSON(
   "leather": {
     "description": "Leather with pore grain, darker creases and lighter worn edges.",
     "params": {"color": {"default": "#5a3825"}, "seed": {"default": 0}},
@@ -227,6 +229,7 @@ static const char* kBuiltinLibrary = R"JSON(
                {"type": "streaks", "amount": "${amount*0.6}", "seed": "${seed+2}", "blend": "max", "opacity": 0.7}]}]
   }
 },
+)JSON" R"JSON(
 "export_presets": {
   "blender": {"description": "Separate PBR maps for Blender's Principled BSDF (OpenGL normals).", "normal": "opengl",
     "maps": [

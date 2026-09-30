@@ -9,6 +9,9 @@ import sys
 import time
 
 BIN = sys.argv[1] if len(sys.argv) > 1 else "build/patina"
+# CreateProcess won't resolve "build/patina" to build\patina.exe on Windows.
+if os.name == "nt" and os.path.exists(BIN + ".exe"):
+    BIN = os.path.abspath(BIN + ".exe")
 WORK = sys.argv[2] if len(sys.argv) > 2 else "ci_work/mcp"
 os.makedirs(WORK, exist_ok=True)
 ASSETS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "examples", "assets")

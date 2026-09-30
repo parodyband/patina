@@ -3,7 +3,8 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 BIN=${1:-build/patina}
-PY=${PY:-python3}
+# Windows often has only `python` (and a Store stub named python3 that fails).
+if [ -z "${PY:-}" ]; then python3 -c "" 2>/dev/null && PY=python3 || PY=python; fi
 W=ci_work
 rm -rf "$W" && mkdir -p "$W"
 pass=0

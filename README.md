@@ -64,6 +64,9 @@ cmake --build build          # ~5 s clean build on 18 cores
 bash tests/run_tests.sh      # end-to-end suite (~3 s)
 ```
 
+On Windows, run these from a "x64 Native Tools Command Prompt for VS 2022" (or a Developer PowerShell
+with `-arch=x64`) so `cl` is on the path, and run the tests from Git Bash. The binary is `build\patina.exe`.
+
 CI builds and tests on macOS (clang) and Windows (MSVC) on every push.
 
 ## Use it from an agent (MCP)
