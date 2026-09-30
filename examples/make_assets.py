@@ -759,6 +759,7 @@ def build_beer_barrel():
         o.data.update()
     # the holder: two saddles cut to the barrel's curve, joined by two rails
     bm = bmesh.new()
+    piece = bm.faces.layers.int.new("piece")        # 1 = saddle, 0 = rail
     W, T_S = 0.37, 0.07
     stave_r = {}
     for v in staves.data.vertices:  # measured barrel radius near each saddle
@@ -778,12 +779,13 @@ def build_beer_barrel():
         outline += [(-xa, z_top), (-W, z_top)]
         front = [bm.verts.new((x, yc - T_S / 2, z)) for x, z in outline]
         back = [bm.verts.new((x, yc + T_S / 2, z)) for x, z in outline]
-        bm.faces.new(front[::-1])
-        bm.faces.new(back)
+        saddle_faces = [bm.faces.new(front[::-1]), bm.faces.new(back)]
         n = len(outline)
         for k in range(n):
             j = (k + 1) % n
-            bm.faces.new((front[k], front[j], back[j], back[k]))
+            saddle_faces.append(bm.faces.new((front[k], front[j], back[j], back[k])))
+        for f in saddle_faces:
+            f[piece] = 1
     for x in (-0.29, 0.29):
         tmp = _box_bm(0.07, H * 0.95, 0.06, cx=x, cz=0.03)
         me = bpy.data.meshes.new("_rail")
@@ -791,7 +793,23 @@ def build_beer_barrel():
         tmp.free()
         bm.from_mesh(me)
         bpy.data.meshes.remove(me)
+    # UVs in world units (uniform density), projected per face so the grain (V) runs along each
+    # plank: saddles along X, rails front to back (Y); packed without rotation
+    uvl = bm.loops.layers.uv.new("UVMap")
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
+    bm.normal_update()                                  # new faces have no normals yet
+    for f in bm.faces:
+        n = f.normal
+        ax = max(range(3), key=lambda i: abs(n[i]))
+        for loop in f.loops:
+            x, y, z = loop.vert.co
+            if f[piece] == 1:   # saddle: length along X
+                loop[uvl].uv = (z, x) if ax == 1 else ((y, x) if ax == 2 else (y, z))
+            else:               # rail: length along Y
+                loop[uvl].uv = (z, y) if ax == 0 else ((x, y) if ax == 2 else (x, z))
     stand = object_from_bmesh("Stand", bm, [make_material("Stand", (0.35, 0.22, 0.12), 0.0, 0.7)])
+    stand["patina_analytic_uv"] = True
+    stand["patina_uv_no_rotate"] = True
     add_bevel(stand, width=0.008, segments=3)
     apply_modifiers(stand)
     return [staves, heads, hoops, rivets, tap, stand]
