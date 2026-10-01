@@ -382,6 +382,33 @@ Json mesh_info(const Mesh& m) {
   j.set("bounds", bb);
   j.set("up_axis", "+Y (glTF). Blender +Z maps to +Y; Blender front (-Y) maps to +Z");
   j.set("uv_islands", m.island_count);
+  // topology: thin "sliver" triangles (smallest angle under 10 degrees) shade and stream badly in games
+  {
+    size_t slivers = 0, nt = m.tri_count();
+    std::vector<float> mins;
+    mins.reserve(nt);
+    for (size_t t = 0; t < nt; t++) {
+      vec3 p[3] = {m.pos[m.idx[t * 3]], m.pos[m.idx[t * 3 + 1]], m.pos[m.idx[t * 3 + 2]]};
+      float mn = 180.f;
+      for (int k = 0; k < 3; k++) {
+        vec3 a = p[(k + 1) % 3] - p[k], b = p[(k + 2) % 3] - p[k];
+        float la = length(a), lb = length(b);
+        if (la < 1e-12f || lb < 1e-12f) { mn = 0; break; }
+        mn = std::fmin(mn, std::acos(clampf(dot(a, b) / (la * lb), -1.f, 1.f)) * 180.f / kPi);
+      }
+      mins.push_back(mn);
+      if (mn < 10.f) slivers++;
+    }
+    Json tj = Json::object();
+    tj.set("sliver_triangles", (int64_t)slivers);
+    tj.set("sliver_fraction", nt ? (double)slivers / nt : 0.0);
+    if (!mins.empty()) {
+      std::sort(mins.begin(), mins.end());
+      tj.set("min_angle_p5_deg", mins[mins.size() / 20]);
+      tj.set("min_angle_median_deg", mins[mins.size() / 2]);
+    }
+    j.set("topology", tj);
+  }
 
   // per texture set: triangle count, uv area, bounds, 3D surface area, parts
   Json sets = Json::object();
@@ -491,6 +518,9 @@ Json mesh_info(const Mesh& m) {
   j.set("parts", parts);
   Json w = Json::array();
   for (auto& s : m.warnings) w.push(s);
+  if (j["topology"]["sliver_fraction"].as_num() > 0.05)
+    w.push(strf("%.0f%% of triangles are slivers (smallest angle under 10 degrees): fan-filled n-gons or long thin strips; "
+                "re-topologize large flat faces into quads", j["topology"]["sliver_fraction"].as_num() * 100.0));
   j.set("warnings", w);
   return j;
 }
